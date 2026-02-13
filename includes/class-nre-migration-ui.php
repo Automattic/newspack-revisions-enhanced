@@ -194,21 +194,31 @@ class NRE_Migration_UI {
 			<div class="loading-indicator"><span class="spinner"></span></div>
 			<div class="diff-error"><?php _e( 'An error occurred while loading the comparison. Please refresh the page and try again.' ); ?></div>
 			<div class="diff">
-			<# var _nreInSection = false; #>
+			<# var _nreSection = ''; #>
 			<# _.each( data.fields, function( field, index ) { #>
-				<# var _nreIsCustom = field.id && field.id.indexOf( 'nre-' ) === 0; #>
-				<# if ( _nreIsCustom && ! _nreInSection ) { #>
-					<# _nreInSection = true; #>
+				<# var _nreType = ''; #>
+				<# if ( field.id && field.id.indexOf( 'nre-tax-' ) === 0 ) { #>
+					<# _nreType = 'tax'; #>
+				<# } else if ( field.id && field.id.indexOf( 'nre-' ) === 0 ) { #>
+					<# _nreType = 'meta'; #>
+				<# } #>
+				<# if ( _nreSection && _nreSection !== _nreType ) { #>
+					</div>
+					<# _nreSection = ''; #>
+				<# } #>
+				<# if ( _nreType === 'meta' && _nreSection !== 'meta' ) { #>
+					<# _nreSection = 'meta'; #>
 					<div class="nre-fields-section">
 						<div class="nre-fields-section-header"><?php esc_html_e( 'Post Meta', 'newspack-revisions-enhanced' ); ?></div>
-				<# } else if ( ! _nreIsCustom && _nreInSection ) { #>
-					<# _nreInSection = false; #>
-					</div>
+				<# } else if ( _nreType === 'tax' && _nreSection !== 'tax' ) { #>
+					<# _nreSection = 'tax'; #>
+					<div class="nre-fields-section">
+						<div class="nre-fields-section-header"><?php esc_html_e( 'Taxonomy Terms', 'newspack-revisions-enhanced' ); ?></div>
 				<# } #>
 				<h2>{{ field.name }}</h2>
 				{{{ field.diff }}}
 			<# }); #>
-			<# if ( _nreInSection ) { #>
+			<# if ( _nreSection ) { #>
 				</div>
 			<# } #>
 			</div>

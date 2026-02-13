@@ -335,22 +335,18 @@ class NRE_Revision_UI {
 		$taxonomies = $this->taxonomy_revisions->get_tracked_taxonomies( $post_type );
 
 		foreach ( $taxonomies as $taxonomy ) {
-			$from_names = '';
-			$to_names   = '';
+			$from_ids = [];
+			$to_ids   = $this->get_taxonomy_term_ids( $compare_to, $taxonomy );
 
 			if ( $compare_from ) {
-				$from_ids   = $this->get_taxonomy_term_ids( $compare_from, $taxonomy );
-				$from_names = implode( "\n", $this->resolve_term_names( $from_ids, $taxonomy ) );
+				$from_ids = $this->get_taxonomy_term_ids( $compare_from, $taxonomy );
 			}
 
-			$to_ids   = $this->get_taxonomy_term_ids( $compare_to, $taxonomy );
-			$to_names = implode( "\n", $this->resolve_term_names( $to_ids, $taxonomy ) );
-
-			if ( $from_names === $to_names ) {
+			if ( $from_ids === $to_ids ) {
 				continue;
 			}
 
-			$diff = wp_text_diff( $from_names, $to_names );
+			$diff = $this->render_taxonomy_diff( $from_ids, $to_ids, $taxonomy );
 
 			if ( ! $diff ) {
 				continue;
@@ -440,6 +436,99 @@ class NRE_Revision_UI {
 		}
 
 		return $names;
+	}
+
+	/**
+	 * Render a side-by-side taxonomy term diff.
+	 *
+	 * Shows from/to term lists with added terms in `<ins>` and removed terms in `<del>`.
+	 * Each term is a clickable link to its edit screen.
+	 *
+	 * @param int[]  $from_ids Term IDs on the "from" side.
+	 * @param int[]  $to_ids   Term IDs on the "to" side.
+	 * @param string $taxonomy Taxonomy name.
+	 * @return string HTML diff table.
+	 */
+	private function render_taxonomy_diff( array $from_ids, array $to_ids, $taxonomy ) {
+		$removed = array_diff( $from_ids, $to_ids );
+		$added   = array_diff( $to_ids, $from_ids );
+
+		// Build "from" side: removed terms wrapped in <del>, others plain.
+		$from_items = [];
+		foreach ( $from_ids as $term_id ) {
+			$item = $this->render_term_item( $term_id, $taxonomy );
+			if ( in_array( $term_id, $removed, true ) ) {
+				$item = '<del>' . $item . '</del>';
+			}
+			$from_items[] = $item;
+		}
+
+		// Build "to" side: added terms wrapped in <ins>, others plain.
+		$to_items = [];
+		foreach ( $to_ids as $term_id ) {
+			$item = $this->render_term_item( $term_id, $taxonomy );
+			if ( in_array( $term_id, $added, true ) ) {
+				$item = '<ins>' . $item . '</ins>';
+			}
+			$to_items[] = $item;
+		}
+
+		$from_html = empty( $from_items )
+			? '<em>' . esc_html__( 'No terms', 'newspack-revisions-enhanced' ) . '</em>'
+			: implode( '<br>', $from_items );
+
+		$to_html = empty( $to_items )
+			? '<em>' . esc_html__( 'No terms', 'newspack-revisions-enhanced' ) . '</em>'
+			: implode( '<br>', $to_items );
+
+		$from_class = ! empty( $removed ) ? 'diff-deletedline' : 'diff-context';
+		$to_class   = ! empty( $added ) ? 'diff-addedline' : 'diff-context';
+
+		return sprintf(
+			'<table class="diff"><colgroup><col class="content diffsplit left"><col class="content diffsplit middle"><col class="content diffsplit right"></colgroup><tbody><tr>'
+			. '<td class="%s"><div class="nre-term-list">%s</div></td>'
+			. '<td class="diff-indicator"></td>'
+			. '<td class="%s"><div class="nre-term-list">%s</div></td>'
+			. '</tr></tbody></table>',
+			esc_attr( $from_class ),
+			$from_html,
+			esc_attr( $to_class ),
+			$to_html
+		);
+	}
+
+	/**
+	 * Render a single term as a clickable link or deleted-term fallback.
+	 *
+	 * @param int    $term_id  The term ID.
+	 * @param string $taxonomy The taxonomy name.
+	 * @return string HTML for the term.
+	 */
+	private function render_term_item( $term_id, $taxonomy ) {
+		$term = get_term( $term_id, $taxonomy );
+
+		if ( is_wp_error( $term ) || ! $term ) {
+			return sprintf(
+				'<span class="nre-term-deleted">[%s]</span>',
+				sprintf(
+					/* translators: %d: term ID */
+					esc_html__( 'Deleted term #%d', 'newspack-revisions-enhanced' ),
+					$term_id
+				)
+			);
+		}
+
+		$edit_link = get_edit_term_link( $term_id, $taxonomy );
+
+		if ( $edit_link ) {
+			return sprintf(
+				'<a href="%s" target="_blank" rel="noopener">%s</a>',
+				esc_url( $edit_link ),
+				esc_html( $term->name )
+			);
+		}
+
+		return esc_html( $term->name );
 	}
 
 	/**

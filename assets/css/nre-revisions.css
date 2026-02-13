@@ -137,6 +137,14 @@
 	border-radius: 3px;
 }
 
+/* Taxonomy term diff list */
+.nre-term-list { padding: 8px; line-height: 1.8; }
+.nre-term-list a { text-decoration: none; color: #003da5; }
+.nre-term-list a:hover { text-decoration: underline; }
+.nre-term-list del { text-decoration: line-through; opacity: 0.6; }
+.nre-term-list ins { text-decoration: none; font-weight: 600; }
+.nre-term-deleted { color: #949494; font-style: italic; }
+
 /* Custom fields section grouping in the diff */
 .nre-fields-section {
 	border: 1px solid #ddd;
