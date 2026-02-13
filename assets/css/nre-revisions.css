@@ -1,0 +1,282 @@
+/* ==========================================================================
+   Part 1: NRE-specific elements (always active)
+   ========================================================================== */
+
+/* Badge in from/to panels and tooltip */
+.nre-migration-badge {
+	display: inline-block;
+	background: #003da5;
+	color: #fff;
+	font-size: 12px;
+	line-height: 1;
+	padding: 2px 8px;
+	border-radius: 2px;
+	margin-left: 6px;
+	vertical-align: middle;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.revisions-tooltip .nre-migration-badge {
+	margin-left: 0;
+	margin-top: 4px;
+}
+
+/* Wrapper: sidebar + diff side by side */
+.nre-diff-wrapper {
+	display: flex;
+	align-items: flex-start;
+}
+
+.nre-diff-wrapper > .revisions-diff-frame {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Sidebar */
+.nre-migration-sidebar {
+	width: 260px;
+	flex-shrink: 0;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 10px rgba(0, 0, 0, 0.07);
+	background: #fff;
+	margin-right: 16px;
+	overflow: hidden;
+	position: sticky;
+	top: 52px;
+}
+
+.nre-sidebar-header {
+	padding: 12px 16px;
+	font-size: 14px;
+	font-weight: 600;
+	color: #1e1e1e;
+	border-bottom: 1px solid #ddd;
+	line-height: 1.4;
+}
+
+/* Sidebar items */
+.nre-sidebar-item {
+	display: block;
+	width: 100%;
+	padding: 10px 16px;
+	border: none;
+	border-bottom: 1px solid #f0f0f0;
+	background: none;
+	text-align: left;
+	cursor: pointer;
+	font-size: 14px;
+	color: #1e1e1e;
+	line-height: 1.4;
+	transition: background-color 125ms ease-in-out, box-shadow 125ms ease-in-out;
+}
+
+.nre-sidebar-item:last-of-type {
+	border-bottom: none;
+}
+
+.nre-sidebar-item:hover {
+	background: #f7f7f7;
+}
+
+.nre-sidebar-item:focus {
+	outline: 2px solid #003da5;
+	outline-offset: -2px;
+}
+
+.nre-sidebar-item.active {
+	background: #f7f7f7;
+	box-shadow: inset 4px 0 0 0 #003da5;
+}
+
+.nre-sidebar-item-name {
+	display: block;
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.nre-sidebar-item-meta {
+	display: block;
+	font-size: 12px;
+	color: #6c6c6c;
+	margin-top: 2px;
+}
+
+.nre-sidebar-item-date {
+	display: block;
+	font-size: 12px;
+	color: #949494;
+	margin-top: 1px;
+}
+
+/* Navigation controls */
+.nre-sidebar-nav {
+	border-top: 1px solid #ddd;
+	padding: 10px 16px;
+}
+
+.nre-sidebar-nav-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+}
+
+.nre-sidebar-nav .nre-nav-position {
+	font-size: 12px;
+	color: #6c6c6c;
+	white-space: nowrap;
+}
+
+.nre-sidebar-nav .button {
+	min-width: 28px;
+	padding: 0 6px;
+	line-height: 24px;
+	border-radius: 3px;
+}
+
+/* Custom fields section grouping in the diff */
+.nre-fields-section {
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	overflow: hidden;
+	box-shadow: none;
+	background: #fff;
+	margin-top: 16px;
+	padding: 0 12px 12px;
+}
+
+.nre-fields-section-header {
+	font-size: 14px;
+	font-weight: 600;
+	color: #1e1e1e;
+	padding: 12px 16px;
+	margin: 0 -12px 0;
+	border-bottom: 1px solid #ddd;
+	background: #f7f7f7;
+}
+
+.nre-fields-section h2 {
+	font-size: 14px;
+	font-weight: 600;
+	padding: 10px 16px 4px;
+	color: #6c6c6c;
+}
+
+/* ==========================================================================
+   Part 2: Core revisions screen overrides — Newspack design language
+   Scoped under .nre-newspack-theme body class.
+   Disable via: add_filter( 'nre_newspack_revisions_theme', '__return_false' );
+   ========================================================================== */
+
+/* Meta panels (From / To author cards) */
+.nre-newspack-theme .revisions-meta {
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 10px rgba(0, 0, 0, 0.07);
+	overflow: hidden;
+}
+
+.nre-newspack-theme .revisions.pinned .revisions-meta {
+	box-shadow: none;
+}
+
+/* Author card text */
+.nre-newspack-theme .revisions-controls .author-card .author-info {
+	color: #1e1e1e;
+}
+
+.nre-newspack-theme .revisions-controls .author-card .byline {
+	color: #6c6c6c;
+}
+
+.nre-newspack-theme .revisions-controls .author-card .date {
+	color: #949494;
+}
+
+.nre-newspack-theme .revisions-controls .author-card .author-name {
+	color: #1e1e1e;
+}
+
+/* From / To labels */
+.nre-newspack-theme .diff-title strong {
+	color: #6c6c6c;
+}
+
+/* Restore button */
+.nre-newspack-theme .diff-meta input.restore-revision {
+	border-radius: 3px;
+}
+
+/* Diff content frame */
+.nre-newspack-theme .revisions-diff {
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 10px rgba(0, 0, 0, 0.07);
+	overflow: hidden;
+}
+
+.nre-newspack-theme .revisions-diff h3 {
+	color: #1e1e1e;
+}
+
+.nre-newspack-theme .diff h2 {
+	font-size: 14px;
+	color: #1e1e1e;
+}
+
+/* Pinned controls bar */
+.nre-newspack-theme .revisions.pinned .revisions-controls {
+	box-shadow: 0 1px 10px rgba(0, 0, 0, 0.07);
+}
+
+/* jQuery UI Slider */
+.nre-newspack-theme .wp-slider.ui-slider {
+	border-color: #ddd;
+	border-radius: 3px;
+}
+
+.nre-newspack-theme .wp-slider .ui-slider-handle {
+	border-color: #ddd;
+	box-shadow: 0 1px 0 #ddd;
+	transition: border-color 125ms ease-in-out, box-shadow 125ms ease-in-out;
+}
+
+.nre-newspack-theme .wp-slider .ui-slider-handle:hover,
+.nre-newspack-theme .wp-slider .ui-slider-handle.ui-state-hover {
+	border-color: #949494;
+}
+
+.nre-newspack-theme .wp-slider .ui-slider-handle:active,
+.nre-newspack-theme .wp-slider .ui-slider-handle.ui-state-active {
+	border-color: #949494;
+}
+
+.nre-newspack-theme .wp-slider .ui-slider-handle:focus,
+.nre-newspack-theme .wp-slider .ui-slider-handle.ui-state-focus {
+	border-color: #949494;
+	box-shadow: 0 0 0 2px #003da5;
+}
+
+/* Tick marks */
+.nre-newspack-theme .revisions-tickmarks > div {
+	border-left-color: #949494;
+}
+
+/* Tooltip */
+.nre-newspack-theme .revisions-tooltip {
+	border-color: #ddd;
+	border-radius: 6px;
+	box-shadow: 0 1px 10px rgba(0, 0, 0, 0.07);
+}
+
+.nre-newspack-theme .revisions-tooltip-arrow > span {
+	border-color: #ddd;
+}
+
+/* Previous / Next buttons */
+.nre-newspack-theme .revisions-buttons .button {
+	border-radius: 3px;
+}
