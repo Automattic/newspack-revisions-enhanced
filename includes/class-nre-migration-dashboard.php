@@ -382,7 +382,7 @@ class NRE_Migration_Dashboard {
 		$status       = ( null === $pre_migration_rev_id ) ? 'created' : 'updated';
 		$can_rollback = ( 'updated' === $status );
 
-		$compare_from = $pre_migration_rev_id;
+		$compare_from = $pre_migration_rev_id ?? 0;
 		$compare_to   = $migration_revisions[0] ?? null;
 
 		return [
@@ -396,8 +396,10 @@ class NRE_Migration_Dashboard {
 			'revision_count' => count( $migration_revisions ),
 			'compare_from'   => $compare_from,
 			'compare_to'     => $compare_to,
-			'revision_url'   => ( $compare_from && $compare_to )
-				? admin_url( "revision.php?from={$compare_from}&to={$compare_to}" )
+			'revision_url'   => $compare_to
+				? ( $compare_from
+					? admin_url( "revision.php?from={$compare_from}&to={$compare_to}" )
+					: admin_url( "revision.php?revision={$compare_to}" ) )
 				: null,
 		];
 	}
@@ -515,7 +517,7 @@ class NRE_Migration_Dashboard {
 
 		$diffs_by_post = [];
 		foreach ( $posts as $post_data ) {
-			if ( ! $post_data['compare_from'] || ! $post_data['compare_to'] ) {
+			if ( ! $post_data['compare_to'] ) {
 				continue;
 			}
 
@@ -623,6 +625,9 @@ tr.row-diff>td{padding:0;border-bottom:2px solid #ddd;background:#fff}
 .diff-field ins{background-color:#a7e3bb;text-decoration:none}
 .diff-field .diff-context{color:#6c6c6c}
 footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #ddd;font-size:.8rem;color:#949494;text-align:center}
+tr.row-diff[data-status="created"] .diff-field table col.left,tr.row-diff[data-status="created"] .diff-field table col.middle,tr.row-diff[data-status="created"] .diff-field table td:first-child,tr.row-diff[data-status="created"] .diff-field table td.diff-indicator,tr.row-diff[data-status="created"] .diff-field table th:first-child{display:none}
+tr.row-diff[data-status="created"] .diff-field table td:last-child{width:100%}
+tr.row-diff[data-status="created"] .diff-field table td .dashicons{display:none}
 @media print{.header{background:#003da5;-webkit-print-color-adjust:exact;print-color-adjust:exact}.pdf-btn{display:none}body{padding:0}.content{padding:.5rem}.stats{gap:.75rem}.stat{padding:.4rem .75rem}.tabs{display:none}tbody.filter-created tr[data-status],tbody.filter-updated tr[data-status]{display:table-row!important}tr.row-diff{display:table-row!important}}
 </style>
 </head>
@@ -749,7 +754,11 @@ else :
 		// Find compare_from (pre-migration revision).
 		$compare_from = $this->rollback->find_pre_migration_revision( $post_id, $migration_name, $timestamp );
 		if ( is_wp_error( $compare_from ) ) {
-			return new WP_REST_Response( [ 'message' => $compare_from->get_error_message() ], 400 );
+			if ( 'no_pre_migration_revision' === $compare_from->get_error_code() ) {
+				$compare_from = 0;
+			} else {
+				return new WP_REST_Response( [ 'message' => $compare_from->get_error_message() ], 400 );
+			}
 		}
 
 		// Find compare_to (first migration revision).

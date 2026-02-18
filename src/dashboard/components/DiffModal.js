@@ -5,7 +5,7 @@ import { useState, useEffect } from '@wordpress/element';
 import { Modal, Spinner } from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 
-export default function DiffModal( { postId, termId, postTitle, onClose } ) {
+export default function DiffModal( { postId, termId, postTitle, postStatus, onClose } ) {
 	const [ fields, setFields ] = useState( null );
 	const [ loading, setLoading ] = useState( true );
 	const [ error, setError ] = useState( null );
@@ -50,7 +50,7 @@ export default function DiffModal( { postId, termId, postTitle, onClose } ) {
 							{ field.name }
 						</h3>
 						<div
-							className="nre-dashboard__diff-field-content"
+							className={ `nre-dashboard__diff-field-content${ postStatus === 'created' ? ' is-created' : '' }` }
 							dangerouslySetInnerHTML={ {
 								__html: field.diff,
 							} }

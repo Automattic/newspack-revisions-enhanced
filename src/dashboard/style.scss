@@ -265,6 +265,7 @@ body.nre-dashboard-page {
 .nre-dashboard__table {
 	width: 100%;
 	border-collapse: collapse;
+	table-layout: fixed;
 
 	th {
 		text-align: left;
@@ -283,6 +284,42 @@ body.nre-dashboard-page {
 		vertical-align: middle;
 	}
 
+	// ID column.
+	th:nth-child(1),
+	td:nth-child(1) {
+		width: 64px;
+	}
+
+	// Status column.
+	th:nth-child(2),
+	td:nth-child(2) {
+		width: 90px;
+	}
+
+	// Title column gets remaining space.
+	th:nth-child(3),
+	td:nth-child(3) {
+		width: auto;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	// Type, Revisions columns.
+	th:nth-child(4),
+	td:nth-child(4),
+	th:nth-child(5),
+	td:nth-child(5) {
+		width: 100px;
+	}
+
+	// Actions column — fixed width, always far right.
+	th:last-child,
+	td:last-child {
+		width: 280px;
+		text-align: right;
+	}
+
 	tr:last-child td {
 		border-bottom: none;
 	}
@@ -297,12 +334,43 @@ body.nre-dashboard-page {
 	}
 }
 
-// ─── Table toolbar (search + count) ─────────────────────────────────────────
+// ─── Tabs ───────────────────────────────────────────────────────────────────
 
-.nre-dashboard__table-toolbar {
+.nre-dashboard__tabs {
 	display: flex;
-	align-items: center;
-	gap: 12px;
+	gap: 0;
+}
+
+.nre-dashboard__tab {
+	padding: 6px 14px;
+	font-size: 13px;
+	font-weight: 600;
+	color: $text-secondary;
+	background: none;
+	border: none;
+	border-bottom: 2px solid transparent;
+	cursor: pointer;
+	transition: color $transition, border-color $transition;
+
+	&:hover {
+		color: $text-primary;
+	}
+
+	&.is-active {
+		color: $accent;
+		border-bottom-color: $accent;
+	}
+}
+
+.nre-dashboard__tab-count {
+	font-weight: 400;
+	color: $text-tertiary;
+	margin-left: 4px;
+}
+
+// ─── Search bar ─────────────────────────────────────────────────────────────
+
+.nre-dashboard__table-search-bar {
 	margin-bottom: 12px;
 }
 
@@ -315,7 +383,19 @@ body.nre-dashboard-page {
 	}
 }
 
+// ─── Table toolbar (tabs + count) ───────────────────────────────────────────
+
+.nre-dashboard__table-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 0;
+	border-bottom: 2px solid $border;
+	padding-bottom: 0;
+}
+
 .nre-dashboard__table-count {
+	margin-left: auto;
 	font-size: 13px;
 	color: $text-secondary;
 	white-space: nowrap;
@@ -406,24 +486,26 @@ body.nre-dashboard-page {
 .nre-dashboard__actions {
 	display: flex;
 	align-items: center;
+	justify-content: flex-end;
 	gap: 8px;
-
-	.components-button.is-secondary.is-destructive {
-		font-size: 13px;
-		padding: 4px 10px;
-		min-height: 0;
-		border-color: $border;
-		color: #cc1818;
-
-		&:hover {
-			border-color: #cc1818;
-		}
-	}
 }
 
-.nre-dashboard__action-link {
+// Action buttons — uniform size and style.
+.nre-dashboard__actions .components-button.is-secondary {
 	font-size: 13px;
-	white-space: nowrap;
+	padding: 4px 10px;
+	min-height: 0;
+	line-height: 1.4;
+
+	&:not(.is-destructive) {
+		border-color: $border;
+		color: $text-primary;
+
+		&:hover {
+			border-color: $accent;
+			color: $accent;
+		}
+	}
 }
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
@@ -507,6 +589,28 @@ body.nre-dashboard-page {
 
 		td.diff-context {
 			color: $text-secondary;
+		}
+	}
+}
+
+// ─── Created-post diffs (hide empty "Deleted" column) ───────────────────────
+
+.nre-dashboard__diff-field-content.is-created {
+	table.diff {
+		col.left,
+		col.middle,
+		td:first-child,
+		td.diff-indicator,
+		th:first-child {
+			display: none;
+		}
+
+		td:last-child {
+			width: 100%;
+		}
+
+		td .dashicons {
+			display: none;
 		}
 	}
 }

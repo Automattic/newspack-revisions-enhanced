@@ -12,15 +12,14 @@ export default function RollbackButton( {
 	const [ showConfirm, setShowConfirm ] = useState( false );
 
 	if ( ! post.can_rollback ) {
-		return (
-			<span className="nre-dashboard__no-rollback">Created</span>
-		);
+		return null;
 	}
 
 	return (
 		<>
 			<Button
 				variant="secondary"
+				size="compact"
 				isDestructive
 				isBusy={ isRollingBack }
 				disabled={ isRollingBack }

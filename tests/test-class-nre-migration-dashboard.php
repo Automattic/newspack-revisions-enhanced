@@ -81,6 +81,42 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 		];
 	}
 
+	/**
+	 * Helper: create a migration where the post is brand new (no pre-migration revision).
+	 */
+	private function create_migration_with_new_post( $name = 'Dashboard New Post Migration' ) {
+		wp_set_current_user( $this->editor_id );
+
+		NRE_Migration_Context::start( $name );
+		$context = NRE_Migration_Context::get_context();
+
+		$post_id = $this->factory->post->create(
+			[
+				'post_title'   => 'Brand New Post',
+				'post_content' => 'Created during migration',
+			]
+		);
+
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Updated during migration',
+			]
+		);
+
+		NRE_Migration_Context::stop();
+
+		$slug = sanitize_title( $name . '-' . $context['timestamp'] );
+		$term = get_term_by( 'slug', $slug, 'nre_migration' );
+
+		return [
+			'post_id'   => $post_id,
+			'term_id'   => $term ? $term->term_id : 0,
+			'name'      => $name,
+			'timestamp' => $context['timestamp'],
+		];
+	}
+
 	// --- Permissions ---
 
 	public function test_check_permission_editor_returns_true() {
@@ -257,6 +293,78 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 
 		// Should return diff fields or a message.
 		$this->assertTrue( $response->get_status() === 200 );
+	}
+
+	public function test_diff_endpoint_returns_diff_for_created_post() {
+		$migration = $this->create_migration_with_new_post();
+
+		require_once ABSPATH . 'wp-admin/includes/revision.php';
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] . '/diff/' . $migration['post_id'] );
+		$request->set_param( 'term_id', $migration['term_id'] );
+		$request->set_param( 'post_id', $migration['post_id'] );
+
+		$response = $this->dashboard->get_post_diff( $request );
+
+		$this->assertSame( 200, $response->get_status() );
+	}
+
+	public function test_diff_endpoint_still_fails_for_missing_revisions() {
+		$migration = $this->create_migration();
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] . '/diff/999999' );
+		$request->set_param( 'term_id', $migration['term_id'] );
+		$request->set_param( 'post_id', 999999 );
+
+		$response = $this->dashboard->get_post_diff( $request );
+
+		$this->assertSame( 400, $response->get_status() );
+	}
+
+	public function test_created_post_has_compare_from_zero() {
+		$migration = $this->create_migration_with_new_post();
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] );
+		$request->set_param( 'term_id', $migration['term_id'] );
+
+		$response = $this->dashboard->get_migration_detail( $request );
+		$data     = $response->get_data();
+		$posts    = $data['posts'];
+
+		$created_post = null;
+		foreach ( $posts as $p ) {
+			if ( $p['post_id'] === $migration['post_id'] ) {
+				$created_post = $p;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $created_post );
+		$this->assertSame( 0, $created_post['compare_from'] );
+		$this->assertSame( 'created', $created_post['status'] );
+	}
+
+	public function test_created_post_has_revision_url() {
+		$migration = $this->create_migration_with_new_post();
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] );
+		$request->set_param( 'term_id', $migration['term_id'] );
+
+		$response = $this->dashboard->get_migration_detail( $request );
+		$data     = $response->get_data();
+		$posts    = $data['posts'];
+
+		$created_post = null;
+		foreach ( $posts as $p ) {
+			if ( $p['post_id'] === $migration['post_id'] ) {
+				$created_post = $p;
+				break;
+			}
+		}
+
+		$this->assertNotNull( $created_post );
+		$this->assertNotNull( $created_post['revision_url'] );
+		$this->assertStringContainsString( 'revision.php?revision=', $created_post['revision_url'] );
 	}
 
 	public function test_diff_endpoint_404_for_invalid_term() {

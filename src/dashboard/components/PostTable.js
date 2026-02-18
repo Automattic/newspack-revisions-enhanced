@@ -7,38 +7,65 @@ import RollbackButton from './RollbackButton';
 import DiffModal from './DiffModal';
 
 const PER_PAGE = 50;
+const TABS = [
+	{ value: 'all', label: 'All' },
+	{ value: 'created', label: 'Created' },
+	{ value: 'updated', label: 'Updated' },
+];
 
 export default function PostTable( { posts, termId, rollingBackIds, onRollback } ) {
 	const [ diffPost, setDiffPost ] = useState( null );
 	const [ search, setSearch ] = useState( '' );
+	const [ tab, setTab ] = useState( 'all' );
 	const [ page, setPage ] = useState( 1 );
 
-	// Filter posts by search query (title, status, post type).
+	// Count per status for tab badges.
+	const counts = useMemo( () => {
+		if ( ! posts ) {
+			return { all: 0, created: 0, updated: 0 };
+		}
+		return {
+			all: posts.length,
+			created: posts.filter( ( p ) => p.status === 'created' ).length,
+			updated: posts.filter( ( p ) => p.status === 'updated' ).length,
+		};
+	}, [ posts ] );
+
+	// Filter posts by tab and search query.
 	const filtered = useMemo( () => {
 		if ( ! posts ) {
 			return [];
 		}
-		if ( ! search.trim() ) {
-			return posts;
+		let list = posts;
+		if ( tab !== 'all' ) {
+			list = list.filter( ( p ) => p.status === tab );
 		}
-		const q = search.toLowerCase().trim();
-		return posts.filter(
-			( p ) =>
-				p.title.toLowerCase().includes( q ) ||
-				p.status.toLowerCase().includes( q ) ||
-				p.post_type.toLowerCase().includes( q ) ||
-				String( p.post_id ).includes( q )
-		);
-	}, [ posts, search ] );
+		if ( search.trim() ) {
+			const q = search.toLowerCase().trim();
+			list = list.filter(
+				( p ) =>
+					p.title.toLowerCase().includes( q ) ||
+					p.status.toLowerCase().includes( q ) ||
+					p.post_type.toLowerCase().includes( q ) ||
+					String( p.post_id ).includes( q )
+			);
+		}
+		return list;
+	}, [ posts, tab, search ] );
 
 	// Reset to page 1 when search changes.
 	const totalPages = Math.max( 1, Math.ceil( filtered.length / PER_PAGE ) );
 	const safePage = Math.min( page, totalPages );
 	const paged = filtered.slice( ( safePage - 1 ) * PER_PAGE, safePage * PER_PAGE );
 
-	// Reset page when search changes.
+	// Reset page when search or tab changes.
 	const handleSearch = ( value ) => {
 		setSearch( value );
+		setPage( 1 );
+	};
+
+	const handleTab = ( value ) => {
+		setTab( value );
 		setPage( 1 );
 	};
 
@@ -48,13 +75,31 @@ export default function PostTable( { posts, termId, rollingBackIds, onRollback }
 
 	return (
 		<>
-			<div className="nre-dashboard__table-toolbar">
+			<div className="nre-dashboard__table-search-bar">
 				<SearchControl
 					value={ search }
 					onChange={ handleSearch }
 					placeholder="Search posts..."
 					className="nre-dashboard__table-search"
 				/>
+			</div>
+			<div className="nre-dashboard__table-toolbar">
+				<div className="nre-dashboard__tabs">
+					{ TABS.map( ( t ) => (
+						<button
+							key={ t.value }
+							className={ `nre-dashboard__tab${
+								tab === t.value ? ' is-active' : ''
+							}` }
+							onClick={ () => handleTab( t.value ) }
+						>
+							{ t.label }
+							<span className="nre-dashboard__tab-count">
+								{ counts[ t.value ] }
+							</span>
+						</button>
+					) ) }
+				</div>
 				<span className="nre-dashboard__table-count">
 					{ filtered.length === posts.length
 						? `${ posts.length } posts`
@@ -65,8 +110,9 @@ export default function PostTable( { posts, termId, rollingBackIds, onRollback }
 			<table className="nre-dashboard__table widefat striped">
 				<thead>
 					<tr>
-						<th>Title</th>
+						<th>ID</th>
 						<th>Status</th>
+						<th>Title</th>
 						<th>Type</th>
 						<th>Revisions</th>
 						<th>Actions</th>
@@ -75,6 +121,14 @@ export default function PostTable( { posts, termId, rollingBackIds, onRollback }
 				<tbody>
 					{ paged.map( ( post ) => (
 						<tr key={ post.post_id }>
+							<td>{ post.post_id }</td>
+							<td>
+								<span
+									className={ `nre-dashboard__badge nre-dashboard__badge--${ post.status }` }
+								>
+									{ post.status }
+								</span>
+							</td>
 							<td>
 								{ post.edit_url ? (
 									<a
@@ -89,13 +143,6 @@ export default function PostTable( { posts, termId, rollingBackIds, onRollback }
 								) }
 							</td>
 							<td>
-								<span
-									className={ `nre-dashboard__badge nre-dashboard__badge--${ post.status }` }
-								>
-									{ post.status }
-								</span>
-							</td>
-							<td>
 								<span className="nre-dashboard__badge nre-dashboard__badge--type">
 									{ post.post_type }
 								</span>
@@ -104,18 +151,19 @@ export default function PostTable( { posts, termId, rollingBackIds, onRollback }
 							<td>
 								<div className="nre-dashboard__actions">
 									{ post.revision_url && (
-										<a
+										<Button
+											variant="secondary"
+											size="compact"
 											href={ post.revision_url }
 											target="_blank"
 											rel="noreferrer"
-											className="nre-dashboard__action-link"
 										>
 											Revisions
-										</a>
+										</Button>
 									) }
-									{ post.compare_from && post.compare_to && (
+									{ post.compare_to && (
 										<Button
-											variant="tertiary"
+											variant="secondary"
 											size="compact"
 											onClick={ () =>
 												setDiffPost( post )
@@ -137,7 +185,7 @@ export default function PostTable( { posts, termId, rollingBackIds, onRollback }
 					) ) }
 					{ paged.length === 0 && (
 						<tr>
-							<td colSpan="5" className="nre-dashboard__empty">
+							<td colSpan="6" className="nre-dashboard__empty">
 								No posts match your search.
 							</td>
 						</tr>
@@ -174,6 +222,7 @@ export default function PostTable( { posts, termId, rollingBackIds, onRollback }
 					postId={ diffPost.post_id }
 					termId={ termId }
 					postTitle={ diffPost.title }
+					postStatus={ diffPost.status }
 					onClose={ () => setDiffPost( null ) }
 				/>
 			) }
