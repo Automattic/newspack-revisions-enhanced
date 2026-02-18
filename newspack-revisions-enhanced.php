@@ -24,6 +24,8 @@ require_once NRE_PLUGIN_DIR . 'includes/class-nre-post-type-revisions.php';
 require_once NRE_PLUGIN_DIR . 'includes/class-nre-revision-ui.php';
 require_once NRE_PLUGIN_DIR . 'includes/class-nre-migration-context.php';
 require_once NRE_PLUGIN_DIR . 'includes/class-nre-migration-ui.php';
+require_once NRE_PLUGIN_DIR . 'includes/class-nre-migration-rollback.php';
+require_once NRE_PLUGIN_DIR . 'includes/class-nre-migration-dashboard.php';
 
 add_action( 'init', [ 'NRE_Migration_Context', 'register_taxonomy' ] );
 add_action( 'plugins_loaded', 'nre_init' );
@@ -34,10 +36,13 @@ function nre_init() {
 	$post_type_revisions = new NRE_Post_Type_Revisions();
 	$revision_ui         = new NRE_Revision_UI( $meta_revisions, $taxonomy_revisions, $post_type_revisions );
 	$migration_ui        = new NRE_Migration_UI();
+	$migration_rollback  = new NRE_Migration_Rollback();
+	$migration_dashboard = new NRE_Migration_Dashboard( $migration_rollback );
 
 	$meta_revisions->register_hooks();
 	$taxonomy_revisions->register_hooks();
 	$post_type_revisions->register_hooks();
 	$revision_ui->register_hooks();
 	$migration_ui->register_hooks();
+	$migration_dashboard->register_hooks();
 }

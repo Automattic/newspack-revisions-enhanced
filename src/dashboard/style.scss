@@ -1,0 +1,477 @@
+// Migration Dashboard — Newspack-themed styles
+// Tokens from Newspack design system.
+
+$accent: #003da5;
+$text-primary: #1e1e1e;
+$text-secondary: #757575;
+$text-tertiary: #949494;
+$border: #ddd;
+$border-light: #f0f0f0;
+$bg-light: #f7f7f7;
+$radius-panel: 2px;
+$radius-button: 3px;
+$radius-badge: 2px;
+$elevation-hover: 0 4px 8px rgba(0, 0, 0, 0.08);
+$transition: 125ms ease-in-out;
+
+// ─── Page background ────────────────────────────────────────────────────────
+
+body.nre-dashboard-page {
+	background: #fff;
+}
+
+// ─── Layout ──────────────────────────────────────────────────────────────────
+
+.nre-dashboard-wrap {
+	margin: 0;
+}
+
+.nre-dashboard {
+	max-width: none;
+	margin: 0;
+}
+
+.nre-dashboard__header {
+	background: #fff;
+	margin-left: -20px;
+	width: calc(100% + 20px);
+}
+
+.nre-dashboard__header-title {
+	align-items: center;
+	border-bottom: 1px solid $border;
+	display: flex;
+
+	svg {
+		fill: #fff;
+		margin: 0;
+
+		&.nre-dashboard__header-icon {
+			flex: 0 0 36px;
+			background: $accent;
+			padding: 12px;
+		}
+	}
+
+	> div {
+		align-items: baseline;
+		display: flex;
+		padding: 0 24px;
+	}
+
+	h2 {
+		margin: 0;
+		padding: 0;
+		font-size: 16px;
+		font-weight: 600;
+		color: $text-primary;
+		line-height: 60px;
+
+		span {
+			color: $text-tertiary;
+			font-weight: 400;
+			margin-left: 4px;
+		}
+	}
+}
+
+.nre-dashboard__content {
+	margin: 0;
+	padding: 32px 16px;
+
+	@media screen and (min-width: 744px) {
+		padding: 32px 40px;
+	}
+}
+
+.nre-dashboard__layout {
+	display: flex;
+	align-items: flex-start;
+	gap: 24px;
+}
+
+.nre-dashboard__loading {
+	display: flex;
+	justify-content: center;
+	padding: 32px;
+}
+
+.nre-dashboard__empty {
+	padding: 16px;
+	color: $text-secondary;
+	font-size: 14px;
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
+
+.nre-dashboard__sidebar {
+	width: 300px;
+	flex-shrink: 0;
+	border: 1px solid $border;
+	border-radius: $radius-panel;
+	background: #fff;
+	overflow: hidden;
+}
+
+.nre-dashboard__sidebar-header {
+	padding: 14px 16px;
+	font-size: 13px;
+	font-weight: 600;
+	color: $text-secondary;
+	border-bottom: 1px solid $border;
+	line-height: 1.4;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.nre-dashboard__sidebar-list {
+	max-height: 600px;
+	overflow-y: auto;
+}
+
+.nre-dashboard__sidebar-item {
+	display: block;
+	width: 100%;
+	padding: 12px 16px;
+	border: none;
+	border-bottom: 1px solid $border;
+	background: none;
+	text-align: left;
+	cursor: pointer;
+	font-size: 14px;
+	color: $text-primary;
+	line-height: 1.4;
+	transition: background-color $transition, box-shadow $transition;
+
+	&:last-child {
+		border-bottom: none;
+	}
+
+	&:hover {
+		box-shadow: $elevation-hover;
+	}
+
+	&:focus {
+		outline: 2px solid $accent;
+		outline-offset: -2px;
+	}
+
+	&.is-selected {
+		background: rgba($accent, 0.04);
+		box-shadow: inset 4px 0 0 0 $accent;
+	}
+}
+
+.nre-dashboard__sidebar-item-name {
+	display: block;
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.nre-dashboard__sidebar-item-meta {
+	display: block;
+	font-size: 12px;
+	color: $text-secondary;
+	margin-top: 2px;
+}
+
+.nre-dashboard__sidebar-item-date {
+	display: block;
+	font-size: 12px;
+	color: $text-tertiary;
+	margin-top: 1px;
+}
+
+// ─── Detail panel ────────────────────────────────────────────────────────────
+
+.nre-dashboard__detail {
+	flex: 1;
+	min-width: 0;
+	border: 1px solid $border;
+	border-radius: $radius-panel;
+	background: #fff;
+	padding: 32px;
+}
+
+.nre-dashboard__detail-empty {
+	padding: 32px;
+	text-align: center;
+	color: $text-secondary;
+	font-size: 14px;
+}
+
+.nre-dashboard__detail-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	margin-bottom: 24px;
+	padding-bottom: 24px;
+	border-bottom: 1px solid $border;
+
+	h2 {
+		font-size: 18px;
+		font-weight: 600;
+		color: $text-primary;
+		margin: 0;
+		padding: 0;
+	}
+}
+
+.nre-dashboard__detail-date {
+	font-size: 13px;
+	color: $text-secondary;
+	margin-top: 4px;
+}
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+
+.nre-dashboard__stats {
+	display: flex;
+	gap: 0;
+	margin-bottom: 24px;
+	border: 1px solid $border;
+	border-radius: $radius-panel;
+	overflow: hidden;
+}
+
+.nre-dashboard__stat-card {
+	flex: 1;
+	padding: 16px;
+	text-align: center;
+	background: #fff;
+
+	& + & {
+		border-left: 1px solid $border;
+	}
+}
+
+.nre-dashboard__stat-value {
+	font-size: 24px;
+	font-weight: 600;
+	color: $text-primary;
+	line-height: 1.2;
+}
+
+.nre-dashboard__stat-label {
+	font-size: 12px;
+	color: $text-secondary;
+	margin-top: 4px;
+}
+
+// ─── Post table ──────────────────────────────────────────────────────────────
+
+.nre-dashboard__table {
+	width: 100%;
+	border-collapse: collapse;
+
+	th {
+		text-align: left;
+		font-size: 13px;
+		font-weight: 600;
+		color: $text-secondary;
+		padding: 12px 16px;
+		border-bottom: 1px solid $border;
+	}
+
+	td {
+		padding: 12px 16px;
+		font-size: 14px;
+		color: $text-primary;
+		border-bottom: 1px solid $border-light;
+		vertical-align: middle;
+	}
+
+	tr:last-child td {
+		border-bottom: none;
+	}
+
+	a {
+		color: $accent;
+		text-decoration: none;
+
+		&:hover {
+			color: #00296e; // $accent darkened 10%
+		}
+	}
+}
+
+// ─── Badges ──────────────────────────────────────────────────────────────────
+
+.nre-dashboard__badge {
+	display: inline-block;
+	font-size: 12px;
+	line-height: 1.333;
+	padding: 2px 6px;
+	border-radius: $radius-badge;
+	font-weight: 400;
+}
+
+.nre-dashboard__badge--created {
+	background: #e6f4ea;
+	color: #137333;
+}
+
+.nre-dashboard__badge--updated {
+	background: #e8f0fe;
+	color: $accent;
+}
+
+.nre-dashboard__badge--type {
+	background: $border-light;
+	color: $text-secondary;
+}
+
+.nre-dashboard__no-rollback {
+	font-size: 13px;
+	color: $text-tertiary;
+	font-style: italic;
+}
+
+// ─── Buttons — Newspack accent ──────────────────────────────────────────────
+
+.nre-dashboard__detail-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+
+	// Style secondary buttons to use Newspack accent instead of WP blue.
+	.components-button.is-secondary {
+		border-color: $border;
+		color: $text-primary;
+
+		&:hover {
+			border-color: $accent;
+			color: $accent;
+		}
+
+		&:focus {
+			box-shadow: inset 0 0 0 1px $accent;
+			border-color: $accent;
+		}
+
+		&.is-destructive {
+			border-color: $border;
+			color: #cc1818;
+
+			&:hover {
+				border-color: #cc1818;
+			}
+		}
+	}
+}
+
+// ─── Actions cell ───────────────────────────────────────────────────────
+
+.nre-dashboard__actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+
+	.components-button.is-secondary.is-destructive {
+		font-size: 13px;
+		padding: 4px 10px;
+		min-height: 0;
+		border-color: $border;
+		color: #cc1818;
+
+		&:hover {
+			border-color: #cc1818;
+		}
+	}
+}
+
+.nre-dashboard__action-link {
+	font-size: 13px;
+	white-space: nowrap;
+}
+
+// ─── Modal ───────────────────────────────────────────────────────────────────
+
+.nre-dashboard__modal {
+	p {
+		margin: 0 0 12px;
+		font-size: 14px;
+		line-height: 1.5;
+	}
+}
+
+.nre-dashboard__modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 16px;
+}
+
+// ─── Diff modal ─────────────────────────────────────────────────────────
+
+.nre-dashboard__diff-modal {
+	.components-modal__content {
+		max-height: 80vh;
+		overflow-y: auto;
+	}
+}
+
+.nre-dashboard__diff-error {
+	color: #cc1818;
+	font-size: 14px;
+}
+
+.nre-dashboard__diff-field {
+	margin-bottom: 20px;
+
+	&:last-child {
+		margin-bottom: 0;
+	}
+}
+
+.nre-dashboard__diff-field-name {
+	font-size: 14px;
+	font-weight: 600;
+	color: $text-primary;
+	margin: 0 0 8px;
+	padding: 0;
+}
+
+.nre-dashboard__diff-field-content {
+	table.diff {
+		width: 100%;
+		border-collapse: collapse;
+		border: 1px solid $border;
+		font-size: 13px;
+		line-height: 1.5;
+
+		td {
+			padding: 4px 8px;
+			vertical-align: top;
+			border-bottom: 1px solid $border-light;
+		}
+
+		td.diff-deletedline {
+			background: #fce8e6;
+
+			del {
+				background: #f5c6cb;
+				text-decoration: none;
+			}
+		}
+
+		td.diff-addedline {
+			background: #e6f4ea;
+
+			ins {
+				background: #b7dfbf;
+				text-decoration: none;
+			}
+		}
+
+		td.diff-context {
+			color: $text-secondary;
+		}
+	}
+}
+
+// ─── Notice override ─────────────────────────────────────────────────────────
+
+.nre-dashboard__content > .components-notice {
+	margin: 0 0 16px;
+}
