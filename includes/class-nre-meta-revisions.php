@@ -1,12 +1,17 @@
 <?php
 /**
  * NRE_Meta_Revisions — Auto-detect and register meta keys for revision tracking.
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Auto-detect and register meta keys for revision tracking.
+ */
 class NRE_Meta_Revisions {
 
 	/**

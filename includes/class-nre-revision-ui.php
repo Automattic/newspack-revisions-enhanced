@@ -1,33 +1,46 @@
 <?php
 /**
  * NRE_Revision_UI — Add meta and taxonomy diff rows to the revision comparison screen.
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Add meta and taxonomy diff rows to the revision comparison screen.
+ */
 class NRE_Revision_UI {
 
 	/**
+	 * Meta revisions handler.
+	 *
 	 * @var NRE_Meta_Revisions
 	 */
 	private $meta_revisions;
 
 	/**
+	 * Taxonomy revisions handler.
+	 *
 	 * @var NRE_Taxonomy_Revisions
 	 */
 	private $taxonomy_revisions;
 
 	/**
+	 * Post type revisions handler.
+	 *
 	 * @var NRE_Post_Type_Revisions
 	 */
 	private $post_type_revisions;
 
 	/**
-	 * @param NRE_Meta_Revisions      $meta_revisions
-	 * @param NRE_Taxonomy_Revisions  $taxonomy_revisions
-	 * @param NRE_Post_Type_Revisions $post_type_revisions
+	 * Constructor.
+	 *
+	 * @param NRE_Meta_Revisions      $meta_revisions      Meta revisions handler.
+	 * @param NRE_Taxonomy_Revisions  $taxonomy_revisions  Taxonomy revisions handler.
+	 * @param NRE_Post_Type_Revisions $post_type_revisions Post type revisions handler.
 	 */
 	public function __construct( NRE_Meta_Revisions $meta_revisions, NRE_Taxonomy_Revisions $taxonomy_revisions, NRE_Post_Type_Revisions $post_type_revisions ) {
 		$this->meta_revisions      = $meta_revisions;
@@ -78,11 +91,14 @@ class NRE_Revision_UI {
 			return $return;
 		}
 
-		array_unshift( $return, [
-			'id'   => 'featured-image',
-			'name' => __( 'Featured Image', 'newspack-revisions-enhanced' ),
-			'diff' => $diff,
-		] );
+		array_unshift(
+			$return,
+			[
+				'id'   => 'featured-image',
+				'name' => __( 'Featured Image', 'newspack-revisions-enhanced' ),
+				'diff' => $diff,
+			]
+		);
 
 		return $return;
 	}
@@ -135,7 +151,7 @@ class NRE_Revision_UI {
 	 * @return array Modified diff rows.
 	 */
 	public function add_meta_diff_rows( $return, $compare_from, $compare_to ) {
-		$post_type = get_post_type( $compare_to->post_parent ?: $compare_to->ID );
+		$post_type = get_post_type( $compare_to->post_parent ? $compare_to->post_parent : $compare_to->ID );
 		$meta_keys = $this->meta_revisions->get_tracked_meta_keys( $post_type );
 
 		foreach ( $meta_keys as $meta_key ) {
@@ -209,7 +225,7 @@ class NRE_Revision_UI {
 				continue;
 			}
 
-			$post_type = get_post_type( $compare_to->post_parent ?: $compare_to->ID );
+			$post_type = get_post_type( $compare_to->post_parent ? $compare_to->post_parent : $compare_to->ID );
 			$label     = $this->meta_revisions->get_meta_label( $meta_key, $post_type );
 
 			$return[] = [
@@ -268,9 +284,14 @@ class NRE_Revision_UI {
 			return '<em>' . esc_html__( 'No featured image', 'newspack-revisions-enhanced' ) . '</em>';
 		}
 
-		$image = wp_get_attachment_image( $attachment_id, 'medium', false, [
-			'style' => 'max-width:100%;height:auto;display:block;margin-bottom:8px;',
-		] );
+		$image = wp_get_attachment_image(
+			$attachment_id,
+			'medium',
+			false,
+			[
+				'style' => 'max-width:100%;height:auto;display:block;margin-bottom:8px;',
+			]
+		);
 
 		if ( ! $image ) {
 			$image = '<em>' . sprintf(
@@ -280,7 +301,7 @@ class NRE_Revision_UI {
 			) . '</em>';
 		}
 
-		$meta_lines = [];
+		$meta_lines   = [];
 		$meta_lines[] = sprintf( '<strong>%s:</strong> %d', esc_html__( 'ID', 'newspack-revisions-enhanced' ), $attachment_id );
 
 		$file = get_attached_file( $attachment_id );
@@ -331,7 +352,7 @@ class NRE_Revision_UI {
 	 * @return array Modified diff rows.
 	 */
 	public function add_taxonomy_diff_rows( $return, $compare_from, $compare_to ) {
-		$post_type  = get_post_type( $compare_to->post_parent ?: $compare_to->ID );
+		$post_type  = get_post_type( $compare_to->post_parent ? $compare_to->post_parent : $compare_to->ID );
 		$taxonomies = $this->taxonomy_revisions->get_tracked_taxonomies( $post_type );
 
 		foreach ( $taxonomies as $taxonomy ) {

@@ -8,6 +8,8 @@
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Requires at least: 6.4
  * Requires PHP: 7.4
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -31,6 +33,9 @@ add_action( 'init', [ 'NRE_Migration_Context', 'register_taxonomy' ] );
 NRE_Migration_Context::register_hooks();
 add_action( 'plugins_loaded', 'nre_init' );
 
+/**
+ * Initialize plugin components.
+ */
 function nre_init() {
 	$meta_revisions      = new NRE_Meta_Revisions();
 	$taxonomy_revisions  = new NRE_Taxonomy_Revisions();

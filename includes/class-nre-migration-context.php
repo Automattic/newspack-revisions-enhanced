@@ -6,12 +6,17 @@
  *   NRE_Migration_Context::start( 'Batch import 2024-Q3 articles' );
  *   // ... wp_update_post() calls ...
  *   NRE_Migration_Context::stop();
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Static API for tagging revisions during data migrations.
+ */
 class NRE_Migration_Context {
 
 	/**
@@ -55,32 +60,36 @@ class NRE_Migration_Context {
 	public static function register_taxonomy() {
 		$post_types = get_post_types( [ 'public' => true ] );
 
-		register_taxonomy( self::TAXONOMY, $post_types, [
-			'labels'            => [
-				'name'                       => _x( 'Migrations', 'taxonomy general name', 'newspack-revisions-enhanced' ),
-				'singular_name'              => _x( 'Migration', 'taxonomy singular name', 'newspack-revisions-enhanced' ),
-				'search_items'               => __( 'Search Migrations', 'newspack-revisions-enhanced' ),
-				'all_items'                   => __( 'All Migrations', 'newspack-revisions-enhanced' ),
-				'edit_item'                  => __( 'Edit Migration', 'newspack-revisions-enhanced' ),
-				'view_item'                  => __( 'View Migration', 'newspack-revisions-enhanced' ),
-				'update_item'                => __( 'Update Migration', 'newspack-revisions-enhanced' ),
-				'add_new_item'               => __( 'Add New Migration', 'newspack-revisions-enhanced' ),
-				'new_item_name'              => __( 'New Migration Name', 'newspack-revisions-enhanced' ),
-				'separate_items_with_commas' => __( 'Separate migrations with commas', 'newspack-revisions-enhanced' ),
-				'add_or_remove_items'        => __( 'Add or remove migrations', 'newspack-revisions-enhanced' ),
-				'choose_from_most_used'      => __( 'Choose from the most used migrations', 'newspack-revisions-enhanced' ),
-				'not_found'                  => __( 'No migrations found.', 'newspack-revisions-enhanced' ),
-				'no_terms'                   => __( 'No migrations', 'newspack-revisions-enhanced' ),
-				'menu_name'                  => __( 'Migrations', 'newspack-revisions-enhanced' ),
-			],
-			'hierarchical'      => false,
-			'public'            => false,
-			'show_ui'           => true,
-			'show_admin_column' => true,
-			'show_in_rest'      => true,
-			'show_tagcloud'     => false,
-			'rewrite'           => false,
-		] );
+		register_taxonomy(
+			self::TAXONOMY,
+			$post_types,
+			[
+				'labels'            => [
+					'name'                       => _x( 'Migrations', 'taxonomy general name', 'newspack-revisions-enhanced' ),
+					'singular_name'              => _x( 'Migration', 'taxonomy singular name', 'newspack-revisions-enhanced' ),
+					'search_items'               => __( 'Search Migrations', 'newspack-revisions-enhanced' ),
+					'all_items'                  => __( 'All Migrations', 'newspack-revisions-enhanced' ),
+					'edit_item'                  => __( 'Edit Migration', 'newspack-revisions-enhanced' ),
+					'view_item'                  => __( 'View Migration', 'newspack-revisions-enhanced' ),
+					'update_item'                => __( 'Update Migration', 'newspack-revisions-enhanced' ),
+					'add_new_item'               => __( 'Add New Migration', 'newspack-revisions-enhanced' ),
+					'new_item_name'              => __( 'New Migration Name', 'newspack-revisions-enhanced' ),
+					'separate_items_with_commas' => __( 'Separate migrations with commas', 'newspack-revisions-enhanced' ),
+					'add_or_remove_items'        => __( 'Add or remove migrations', 'newspack-revisions-enhanced' ),
+					'choose_from_most_used'      => __( 'Choose from the most used migrations', 'newspack-revisions-enhanced' ),
+					'not_found'                  => __( 'No migrations found.', 'newspack-revisions-enhanced' ),
+					'no_terms'                   => __( 'No migrations', 'newspack-revisions-enhanced' ),
+					'menu_name'                  => __( 'Migrations', 'newspack-revisions-enhanced' ),
+				],
+				'hierarchical'      => false,
+				'public'            => false,
+				'show_ui'           => true,
+				'show_admin_column' => true,
+				'show_in_rest'      => true,
+				'show_tagcloud'     => false,
+				'rewrite'           => false,
+			]
+		);
 	}
 
 	/**
@@ -146,9 +155,13 @@ class NRE_Migration_Context {
 			return self::$term_id;
 		}
 
-		$result = wp_insert_term( self::$name, self::TAXONOMY, [
-			'slug' => $slug,
-		] );
+		$result = wp_insert_term(
+			self::$name,
+			self::TAXONOMY,
+			[
+				'slug' => $slug,
+			]
+		);
 
 		if ( is_wp_error( $result ) ) {
 			// Term might already exist under a different slug due to sanitization.
@@ -239,9 +252,12 @@ class NRE_Migration_Context {
 		}
 
 		// Check if the parent post has any other revisions for this migration.
-		$sibling_revisions = wp_get_post_revisions( $parent_id, [
-			'order' => 'ASC',
-		] );
+		$sibling_revisions = wp_get_post_revisions(
+			$parent_id,
+			[
+				'order' => 'ASC',
+			]
+		);
 
 		$has_other = false;
 		foreach ( $sibling_revisions as $rev ) {

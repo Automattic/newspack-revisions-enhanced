@@ -1,12 +1,17 @@
 <?php
 /**
  * NRE_Taxonomy_Revisions — Snapshot taxonomy term assignments into revision meta.
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Snapshot taxonomy term assignments into revision meta.
+ */
 class NRE_Taxonomy_Revisions {
 
 	/**

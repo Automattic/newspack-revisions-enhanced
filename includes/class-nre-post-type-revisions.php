@@ -5,12 +5,17 @@
  * WordPress revisions always have post_type='revision', so the parent's actual
  * post type is lost. This class snapshots the parent's post_type into revision
  * meta so changes can be diffed.
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Track post type changes in revisions.
+ */
 class NRE_Post_Type_Revisions {
 
 	/**

@@ -1,12 +1,17 @@
 <?php
 /**
  * NRE_Migration_UI — Admin UI for migration context: badges, filter bar, scripts.
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Admin UI for migration context: badges, filter bar, scripts.
+ */
 class NRE_Migration_UI {
 
 	/**
@@ -77,7 +82,7 @@ class NRE_Migration_UI {
 
 		wp_enqueue_script(
 			'nre-revisions',
-			plugins_url( 'assets/js/nre-revisions.js', dirname( __FILE__ ) ),
+			plugins_url( 'assets/js/nre-revisions.js', __DIR__ ),
 			[ 'revisions' ],
 			NRE_VERSION,
 			true
@@ -85,7 +90,7 @@ class NRE_Migration_UI {
 
 		wp_enqueue_style(
 			'nre-revisions',
-			plugins_url( 'assets/css/nre-revisions.css', dirname( __FILE__ ) ),
+			plugins_url( 'assets/css/nre-revisions.css', __DIR__ ),
 			[ 'revisions' ],
 			NRE_VERSION
 		);
@@ -123,9 +128,9 @@ class NRE_Migration_UI {
 			<# if ( ! _.isUndefined( data.attributes ) ) { #>
 				<div class="diff-title">
 					<# if ( 'from' === data.type ) { #>
-						<strong id="diff-title-from"><?php _ex( 'From:', 'Followed by post revision info' ); ?></strong>
+						<strong id="diff-title-from"><?php echo esc_html_x( 'From:', 'Followed by post revision info', 'newspack-revisions-enhanced' ); ?></strong>
 					<# } else if ( 'to' === data.type ) { #>
-						<strong id="diff-title-to"><?php _ex( 'To:', 'Followed by post revision info' ); ?></strong>
+						<strong id="diff-title-to"><?php echo esc_html_x( 'To:', 'Followed by post revision info', 'newspack-revisions-enhanced' ); ?></strong>
 					<# } #>
 					<div class="author-card<# if ( data.attributes.autosave ) { #> autosave<# } #>">
 						<div>
@@ -136,7 +141,7 @@ class NRE_Migration_UI {
 								<?php
 								printf(
 									/* translators: %s: User's display name. */
-									__( 'Autosave by %s' ),
+									esc_html__( 'Autosave by %s', 'newspack-revisions-enhanced' ),
 									'<span class="author-name">{{ data.attributes.author.name }}</span>'
 								);
 								?>
@@ -146,7 +151,7 @@ class NRE_Migration_UI {
 								<?php
 								printf(
 									/* translators: %s: User's display name. */
-									__( 'Current Revision by %s' ),
+									esc_html__( 'Current Revision by %s', 'newspack-revisions-enhanced' ),
 									'<span class="author-name">{{ data.attributes.author.name }}</span>'
 								);
 								?>
@@ -156,7 +161,7 @@ class NRE_Migration_UI {
 								<?php
 								printf(
 									/* translators: %s: User's display name. */
-									__( 'Revision by %s' ),
+									esc_html__( 'Revision by %s', 'newspack-revisions-enhanced' ),
 									'<span class="author-name">{{ data.attributes.author.name }}</span>'
 								);
 								?>
@@ -178,9 +183,9 @@ class NRE_Migration_UI {
 							<# } #>
 						<?php } ?>
 						<# if ( data.attributes.autosave ) { #>
-							type="button" class="restore-revision button button-primary" value="<?php esc_attr_e( 'Restore This Autosave' ); ?>" />
+							type="button" class="restore-revision button button-primary" value="<?php esc_attr_e( 'Restore This Autosave', 'newspack-revisions-enhanced' ); ?>" />
 						<# } else { #>
-							type="button" class="restore-revision button button-primary" value="<?php esc_attr_e( 'Restore This Revision' ); ?>" />
+							type="button" class="restore-revision button button-primary" value="<?php esc_attr_e( 'Restore This Revision', 'newspack-revisions-enhanced' ); ?>" />
 						<# } #>
 					<# } #>
 				</div>
@@ -192,7 +197,7 @@ class NRE_Migration_UI {
 
 		<script id="tmpl-nre-revisions-diff" type="text/html">
 			<div class="loading-indicator"><span class="spinner"></span></div>
-			<div class="diff-error"><?php _e( 'An error occurred while loading the comparison. Please refresh the page and try again.' ); ?></div>
+			<div class="diff-error"><?php echo esc_html__( 'An error occurred while loading the comparison. Please refresh the page and try again.', 'newspack-revisions-enhanced' ); ?></div>
 			<div class="diff">
 			<# var _nreSection = ''; #>
 			<# _.each( data.fields, function( field, index ) { #>
@@ -258,9 +263,12 @@ class NRE_Migration_UI {
 
 		// Re-index to a plain array sorted by timestamp.
 		$migrations = array_values( self::$migrations );
-		usort( $migrations, function ( $a, $b ) {
-			return $a['timestamp'] - $b['timestamp'];
-		} );
+		usort(
+			$migrations,
+			function ( $a, $b ) {
+				return $a['timestamp'] - $b['timestamp'];
+			}
+		);
 
 		?>
 		<script>

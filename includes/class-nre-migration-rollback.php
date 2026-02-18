@@ -4,12 +4,17 @@
  *
  * Finds the pre-migration revision and restores it, including taxonomy
  * and post type state captured by NRE's revision hooks.
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Rollback logic for migration revisions.
+ */
 class NRE_Migration_Rollback {
 
 	/**
@@ -39,18 +44,20 @@ class NRE_Migration_Rollback {
 	 * @return array Summary of rollback results.
 	 */
 	public function rollback_migration( $migration_name, $migration_ts, $term_id ) {
-		$post_ids = get_posts( [
-			'post_type'      => 'any',
-			'post_status'    => 'any',
-			'posts_per_page' => -1,
-			'fields'         => 'ids',
-			'tax_query'      => [
-				[
-					'taxonomy' => NRE_Migration_Context::TAXONOMY,
-					'terms'    => $term_id,
+		$post_ids = get_posts(
+			[
+				'post_type'      => 'any',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'tax_query'      => [
+					[
+						'taxonomy' => NRE_Migration_Context::TAXONOMY,
+						'terms'    => $term_id,
+					],
 				],
-			],
-		] );
+			]
+		);
 
 		$rolled_back = 0;
 		$skipped     = 0;
@@ -60,7 +67,7 @@ class NRE_Migration_Rollback {
 			$pre_revision_id = $this->find_pre_migration_revision( $post_id, $migration_name, $migration_ts );
 
 			if ( is_wp_error( $pre_revision_id ) ) {
-				$skipped++;
+				++$skipped;
 				continue;
 			}
 
@@ -72,7 +79,7 @@ class NRE_Migration_Rollback {
 					'message' => $result->get_error_message(),
 				];
 			} else {
-				$rolled_back++;
+				++$rolled_back;
 			}
 		}
 
@@ -93,10 +100,13 @@ class NRE_Migration_Rollback {
 	 * @return int|WP_Error Pre-migration revision ID or WP_Error.
 	 */
 	public function find_pre_migration_revision( $post_id, $migration_name, $migration_ts ) {
-		$revisions = wp_get_post_revisions( $post_id, [
-			'order'   => 'ASC',
-			'orderby' => 'date ID',
-		] );
+		$revisions = wp_get_post_revisions(
+			$post_id,
+			[
+				'order'   => 'ASC',
+				'orderby' => 'date ID',
+			]
+		);
 
 		if ( empty( $revisions ) ) {
 			return new WP_Error(
@@ -195,7 +205,7 @@ class NRE_Migration_Rollback {
 	private function restore_post_type( $post_id, $revision_id ) {
 		$stored_type = get_post_meta( $revision_id, '_nre_post_type', true );
 
-		if ( $stored_type && $stored_type !== get_post_type( $post_id ) ) {
+		if ( $stored_type && get_post_type( $post_id ) !== $stored_type ) {
 			set_post_type( $post_id, $stored_type );
 		}
 	}

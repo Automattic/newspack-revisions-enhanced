@@ -1,12 +1,17 @@
 <?php
 /**
  * NRE_Migration_Dashboard — Admin page and REST API for the Migration Dashboard.
+ *
+ * @package Newspack_Revisions_Enhanced
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Admin page and REST API for the Migration Dashboard.
+ */
 class NRE_Migration_Dashboard {
 
 	/**
@@ -22,6 +27,8 @@ class NRE_Migration_Dashboard {
 	private $rollback;
 
 	/**
+	 * Constructor.
+	 *
 	 * @param NRE_Migration_Rollback $rollback Rollback handler instance.
 	 */
 	public function __construct( NRE_Migration_Rollback $rollback ) {
@@ -92,7 +99,7 @@ class NRE_Migration_Dashboard {
 
 		wp_enqueue_script(
 			'nre-migration-dashboard',
-			plugins_url( 'build/dashboard/index.js', dirname( __FILE__ ) ),
+			plugins_url( 'build/dashboard/index.js', __DIR__ ),
 			$asset['dependencies'],
 			$asset['version'],
 			true
@@ -100,96 +107,120 @@ class NRE_Migration_Dashboard {
 
 		wp_enqueue_style(
 			'nre-migration-dashboard',
-			plugins_url( 'build/dashboard/style-index.css', dirname( __FILE__ ) ),
+			plugins_url( 'build/dashboard/style-index.css', __DIR__ ),
 			[ 'wp-components' ],
 			$asset['version']
 		);
 
-		wp_localize_script( 'nre-migration-dashboard', 'nreDashboard', [
-			'restUrl'     => rest_url( self::REST_NAMESPACE ),
-			'nonce'       => wp_create_nonce( 'wp_rest' ),
-			'exportUrl'   => admin_url( 'admin-post.php' ),
-			'exportNonce' => wp_create_nonce( 'nre_export_migration' ),
-		] );
+		wp_localize_script(
+			'nre-migration-dashboard',
+			'nreDashboard',
+			[
+				'restUrl'     => rest_url( self::REST_NAMESPACE ),
+				'nonce'       => wp_create_nonce( 'wp_rest' ),
+				'exportUrl'   => admin_url( 'admin-post.php' ),
+				'exportNonce' => wp_create_nonce( 'nre_export_migration' ),
+			]
+		);
 	}
 
 	/**
 	 * Register REST API routes.
 	 */
 	public function register_rest_routes() {
-		register_rest_route( self::REST_NAMESPACE, '/migrations', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_migrations' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-		] );
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_migrations' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+			]
+		);
 
-		register_rest_route( self::REST_NAMESPACE, '/migrations/(?P<term_id>\d+)', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_migration_detail' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'term_id' => [
-					'required'          => true,
-					'validate_callback' => function ( $param ) {
-						return is_numeric( $param );
-					},
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations/(?P<term_id>\d+)',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_migration_detail' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'term_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
 				],
-			],
-		] );
+			]
+		);
 
-		register_rest_route( self::REST_NAMESPACE, '/migrations/(?P<term_id>\d+)/rollback', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'rollback_post' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'term_id' => [
-					'required'          => true,
-					'validate_callback' => function ( $param ) {
-						return is_numeric( $param );
-					},
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations/(?P<term_id>\d+)/rollback',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'rollback_post' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'term_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
+					'post_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
 				],
-				'post_id' => [
-					'required'          => true,
-					'validate_callback' => function ( $param ) {
-						return is_numeric( $param );
-					},
-				],
-			],
-		] );
+			]
+		);
 
-		register_rest_route( self::REST_NAMESPACE, '/migrations/(?P<term_id>\d+)/diff/(?P<post_id>\d+)', [
-			'methods'             => 'GET',
-			'callback'            => [ $this, 'get_post_diff' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'term_id' => [
-					'required'          => true,
-					'validate_callback' => function ( $param ) {
-						return is_numeric( $param );
-					},
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations/(?P<term_id>\d+)/diff/(?P<post_id>\d+)',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_post_diff' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'term_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
+					'post_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
 				],
-				'post_id' => [
-					'required'          => true,
-					'validate_callback' => function ( $param ) {
-						return is_numeric( $param );
-					},
-				],
-			],
-		] );
+			]
+		);
 
-		register_rest_route( self::REST_NAMESPACE, '/migrations/(?P<term_id>\d+)/rollback-all', [
-			'methods'             => 'POST',
-			'callback'            => [ $this, 'rollback_all' ],
-			'permission_callback' => [ $this, 'check_permission' ],
-			'args'                => [
-				'term_id' => [
-					'required'          => true,
-					'validate_callback' => function ( $param ) {
-						return is_numeric( $param );
-					},
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations/(?P<term_id>\d+)/rollback-all',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'rollback_all' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'term_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
 				],
-			],
-		] );
+			]
+		);
 	}
 
 	/**
@@ -207,12 +238,14 @@ class NRE_Migration_Dashboard {
 	 * @return WP_REST_Response
 	 */
 	public function get_migrations() {
-		$terms = get_terms( [
-			'taxonomy'   => NRE_Migration_Context::TAXONOMY,
-			'hide_empty' => false,
-			'orderby'    => 'term_id',
-			'order'      => 'DESC',
-		] );
+		$terms = get_terms(
+			[
+				'taxonomy'   => NRE_Migration_Context::TAXONOMY,
+				'hide_empty' => false,
+				'orderby'    => 'term_id',
+				'order'      => 'DESC',
+			]
+		);
 
 		if ( is_wp_error( $terms ) ) {
 			return new WP_REST_Response( [], 200 );
@@ -253,18 +286,20 @@ class NRE_Migration_Dashboard {
 		$migration_name = $term->name;
 
 		// Get all posts assigned to this migration term.
-		$post_ids = get_posts( [
-			'post_type'      => 'any',
-			'post_status'    => 'any',
-			'posts_per_page' => -1,
-			'fields'         => 'ids',
-			'tax_query'      => [
-				[
-					'taxonomy' => NRE_Migration_Context::TAXONOMY,
-					'terms'    => $term_id,
+		$post_ids = get_posts(
+			[
+				'post_type'      => 'any',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'tax_query'      => [
+					[
+						'taxonomy' => NRE_Migration_Context::TAXONOMY,
+						'terms'    => $term_id,
+					],
 				],
-			],
-		] );
+			]
+		);
 
 		$posts           = [];
 		$posts_created   = 0;
@@ -277,28 +312,31 @@ class NRE_Migration_Dashboard {
 			$posts[] = $post_data;
 
 			if ( 'created' === $post_data['status'] ) {
-				$posts_created++;
+				++$posts_created;
 			} else {
-				$posts_updated++;
+				++$posts_updated;
 			}
 
 			$total_revisions += $post_data['revision_count'];
 		}
 
-		return new WP_REST_Response( [
-			'term_id'   => $term_id,
-			'name'      => $migration_name,
-			'slug'      => $term->slug,
-			'timestamp' => $timestamp,
-			'date'      => $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '',
-			'stats'     => [
-				'total_posts'      => count( $post_ids ),
-				'posts_created'    => $posts_created,
-				'posts_updated'    => $posts_updated,
-				'total_revisions'  => $total_revisions,
+		return new WP_REST_Response(
+			[
+				'term_id'   => $term_id,
+				'name'      => $migration_name,
+				'slug'      => $term->slug,
+				'timestamp' => $timestamp,
+				'date'      => $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '',
+				'stats'     => [
+					'total_posts'     => count( $post_ids ),
+					'posts_created'   => $posts_created,
+					'posts_updated'   => $posts_updated,
+					'total_revisions' => $total_revisions,
+				],
+				'posts'     => $posts,
 			],
-			'posts'     => $posts,
-		], 200 );
+			200
+		);
 	}
 
 	/**
@@ -313,10 +351,13 @@ class NRE_Migration_Dashboard {
 		$post = get_post( $post_id );
 
 		// Get all revisions for this post ordered by date ASC, ID ASC.
-		$revisions = wp_get_post_revisions( $post_id, [
-			'order'   => 'ASC',
-			'orderby' => 'date ID',
-		] );
+		$revisions = wp_get_post_revisions(
+			$post_id,
+			[
+				'order'   => 'ASC',
+				'orderby' => 'date ID',
+			]
+		);
 
 		$migration_revisions  = [];
 		$pre_migration_rev_id = null;
@@ -346,7 +387,7 @@ class NRE_Migration_Dashboard {
 
 		return [
 			'post_id'        => $post_id,
-			'title'          => $post->post_title ?: __( '(no title)', 'newspack-revisions-enhanced' ),
+			'title'          => $post->post_title ? $post->post_title : __( '(no title)', 'newspack-revisions-enhanced' ),
 			'post_type'      => $post->post_type,
 			'post_status'    => $post->post_status,
 			'edit_url'       => get_edit_post_link( $post_id, 'raw' ),
@@ -384,13 +425,17 @@ class NRE_Migration_Dashboard {
 			return new WP_REST_Response( [ 'message' => $result->get_error_message() ], 400 );
 		}
 
-		return new WP_REST_Response( [
-			'success' => true,
-			'message' => sprintf(
-				__( 'Post "%s" has been rolled back.', 'newspack-revisions-enhanced' ),
-				get_the_title( $post_id )
-			),
-		], 200 );
+		return new WP_REST_Response(
+			[
+				'success' => true,
+				'message' => sprintf(
+					/* translators: %s: Post title. */
+					__( 'Post "%s" has been rolled back.', 'newspack-revisions-enhanced' ),
+					get_the_title( $post_id )
+				),
+			],
+			200
+		);
 	}
 
 	/**
@@ -436,18 +481,20 @@ class NRE_Migration_Dashboard {
 		$date_display   = $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '';
 
 		// Get all posts assigned to this migration term.
-		$post_ids = get_posts( [
-			'post_type'      => 'any',
-			'post_status'    => 'any',
-			'posts_per_page' => -1,
-			'fields'         => 'ids',
-			'tax_query'      => [
-				[
-					'taxonomy' => NRE_Migration_Context::TAXONOMY,
-					'terms'    => $term_id,
+		$post_ids = get_posts(
+			[
+				'post_type'      => 'any',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'tax_query'      => [
+					[
+						'taxonomy' => NRE_Migration_Context::TAXONOMY,
+						'terms'    => $term_id,
+					],
 				],
-			],
-		] );
+			]
+		);
 
 		$posts           = [];
 		$posts_created   = 0;
@@ -499,7 +546,7 @@ class NRE_Migration_Dashboard {
 		header( 'Content-Type: text/html; charset=utf-8' );
 		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
 		header( 'Content-Length: ' . strlen( $html ) );
-		echo $html;
+		echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Self-contained HTML report built with escaped values.
 		exit;
 	}
 
@@ -516,10 +563,8 @@ class NRE_Migration_Dashboard {
 	 * @return string Complete HTML document.
 	 */
 	private function build_export_html( $name, $date, $created, $updated, $total_revisions, $posts, $diffs_by_post ) {
-		$total   = count( $posts );
-		$gen_ts  = wp_date( 'Y-m-d H:i:s T' );
-		$esc     = 'esc_html';
-		$cols    = 5;
+		$total  = count( $posts );
+		$gen_ts = wp_date( 'Y-m-d H:i:s T' );
 
 		ob_start();
 		?>
@@ -528,7 +573,7 @@ class NRE_Migration_Dashboard {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Migration Report: <?php echo $esc( $name ); ?></title>
+<title>Migration Report: <?php echo esc_html( $name ); ?></title>
 <style>
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,sans-serif;font-size:14px;line-height:1.6;color:#1e1e1e;background:#fff}
@@ -586,53 +631,62 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #ddd;font-size:.8re
 	<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="#fff"><path fill-rule="evenodd" clip-rule="evenodd" d="M24 12C24 18.6271 18.6271 24 12 24C5.37213 24 0 18.6271 0 12C0 5.3729 5.3729 0 12 0C18.6271 0 24 5.3729 24 12ZM17.4545 17.4546L6.54545 6.54545V17.4545H8.72727V11.8182L14.3636 17.4546H17.4545ZM11.2727 8.18182H17.4545V6.54545H9.63636L11.2727 8.18182ZM17.4545 11.2727H14.3636L12.7273 9.63636H17.4545V11.2727ZM17.4545 12.7273V14.3636L15.8182 12.7273H17.4545Z"/></svg>
 	<div>
 		<h1>Migration Report</h1>
-		<div class="subtitle"><?php echo $esc( $name ); ?></div>
+		<div class="subtitle"><?php echo esc_html( $name ); ?></div>
 	</div>
 	<button class="pdf-btn" onclick="window.print()">Save as PDF</button>
 </div>
 
 <div class="content">
 <div class="meta">
-	<?php if ( $date ) : ?>
-		Migration date: <?php echo $esc( $date ); ?> &middot;
+		<?php if ( $date ) : ?>
+		Migration date: <?php echo esc_html( $date ); ?> &middot;
 	<?php endif; ?>
-	Generated: <?php echo $esc( $gen_ts ); ?>
+	Generated: <?php echo esc_html( $gen_ts ); ?>
 </div>
 
 <div class="stats">
-	<div class="stat"><strong><?php echo $esc( $total ); ?></strong><span>Total Posts</span></div>
-	<div class="stat"><strong><?php echo $esc( $created ); ?></strong><span>Created</span></div>
-	<div class="stat"><strong><?php echo $esc( $updated ); ?></strong><span>Updated</span></div>
-	<div class="stat"><strong><?php echo $esc( $total_revisions ); ?></strong><span>Revisions</span></div>
+	<div class="stat"><strong><?php echo esc_html( $total ); ?></strong><span>Total Posts</span></div>
+	<div class="stat"><strong><?php echo esc_html( $created ); ?></strong><span>Created</span></div>
+	<div class="stat"><strong><?php echo esc_html( $updated ); ?></strong><span>Updated</span></div>
+	<div class="stat"><strong><?php echo esc_html( $total_revisions ); ?></strong><span>Revisions</span></div>
 </div>
 
 <div class="tabs">
-	<button class="tab active" data-filter="all">All <span class="count"><?php echo $esc( $total ); ?></span></button>
-	<button class="tab" data-filter="created">Created <span class="count"><?php echo $esc( $created ); ?></span></button>
-	<button class="tab" data-filter="updated">Updated <span class="count"><?php echo $esc( $updated ); ?></span></button>
+	<button class="tab active" data-filter="all">All <span class="count"><?php echo esc_html( $total ); ?></span></button>
+	<button class="tab" data-filter="created">Created <span class="count"><?php echo esc_html( $created ); ?></span></button>
+	<button class="tab" data-filter="updated">Updated <span class="count"><?php echo esc_html( $updated ); ?></span></button>
 </div>
 <table>
 <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Type</th><th>Revisions</th></tr></thead>
 <tbody>
-<?php foreach ( $posts as $p ) :
-	$has_diff = isset( $diffs_by_post[ $p['post_id'] ] );
-	$view_url = get_permalink( $p['post_id'] );
-?>
-<tr class="<?php echo $has_diff ? 'row-toggle' : ''; ?>" data-status="<?php echo $esc( $p['status'] ); ?>" <?php echo $has_diff ? 'data-diff="diff-' . $esc( $p['post_id'] ) . '"' : ''; ?>>
-	<td><?php echo $esc( $p['post_id'] ); ?></td>
-	<td><?php if ( $view_url ) : ?><a href="<?php echo esc_url( $view_url ); ?>" target="_blank"><?php echo $esc( $p['title'] ); ?></a><?php else : ?><?php echo $esc( $p['title'] ); ?><?php endif; ?></td>
-	<td><span class="badge badge-<?php echo $esc( $p['status'] ); ?>"><?php echo $esc( $p['status'] ); ?></span></td>
-	<td><?php echo $esc( $p['post_type'] ); ?></td>
-	<td><?php echo $esc( $p['revision_count'] ); ?></td>
+		<?php
+		foreach ( $posts as $p ) :
+			$has_diff = isset( $diffs_by_post[ $p['post_id'] ] );
+			$view_url = get_permalink( $p['post_id'] );
+			?>
+<tr class="<?php echo $has_diff ? 'row-toggle' : ''; ?>" data-status="<?php echo esc_html( $p['status'] ); ?>" <?php echo $has_diff ? 'data-diff="diff-' . esc_html( $p['post_id'] ) . '"' : ''; ?>>
+	<td><?php echo esc_html( $p['post_id'] ); ?></td>
+	<td>
+			<?php
+			if ( $view_url ) :
+				?>
+		<a href="<?php echo esc_url( $view_url ); ?>" target="_blank"><?php echo esc_html( $p['title'] ); ?></a>
+				<?php
+else :
+	?>
+		<?php echo esc_html( $p['title'] ); ?><?php endif; ?></td>
+	<td><span class="badge badge-<?php echo esc_html( $p['status'] ); ?>"><?php echo esc_html( $p['status'] ); ?></span></td>
+	<td><?php echo esc_html( $p['post_type'] ); ?></td>
+	<td><?php echo esc_html( $p['revision_count'] ); ?></td>
 </tr>
-<?php if ( $has_diff ) : ?>
-<tr class="row-diff" data-status="<?php echo $esc( $p['status'] ); ?>" id="diff-<?php echo $esc( $p['post_id'] ); ?>">
-	<td colspan="<?php echo $cols; ?>">
+			<?php if ( $has_diff ) : ?>
+<tr class="row-diff" data-status="<?php echo esc_html( $p['status'] ); ?>" id="diff-<?php echo esc_html( $p['post_id'] ); ?>">
+	<td colspan="5">
 		<div class="diff-wrap">
-		<?php foreach ( $diffs_by_post[ $p['post_id'] ] as $field ) : ?>
+				<?php foreach ( $diffs_by_post[ $p['post_id'] ] as $field ) : ?>
 			<div class="diff-field">
-				<div class="diff-field-name"><?php echo $esc( $field['name'] ); ?></div>
-				<div><?php echo $field['diff']; ?></div>
+				<div class="diff-field-name"><?php echo esc_html( $field['name'] ); ?></div>
+				<div><?php echo $field['diff']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- HTML from wp_get_revision_ui_diff(). ?></div>
 			</div>
 		<?php endforeach; ?>
 		</div>
@@ -699,10 +753,13 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #ddd;font-size:.8re
 		}
 
 		// Find compare_to (first migration revision).
-		$revisions  = wp_get_post_revisions( $post_id, [
-			'order'   => 'ASC',
-			'orderby' => 'date ID',
-		] );
+		$revisions  = wp_get_post_revisions(
+			$post_id,
+			[
+				'order'   => 'ASC',
+				'orderby' => 'date ID',
+			]
+		);
 		$compare_to = null;
 		foreach ( $revisions as $rev ) {
 			$rev_name = get_post_meta( $rev->ID, '_nre_migration_name', true );
