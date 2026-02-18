@@ -24,9 +24,7 @@ export default function MigrationList( {
 		return (
 			<div className="nre-dashboard__sidebar">
 				<div className="nre-dashboard__sidebar-header">Migrations</div>
-				<div className="nre-dashboard__empty">
-					No migrations found.
-				</div>
+				<div className="nre-dashboard__empty">No migrations found.</div>
 			</div>
 		);
 	}
@@ -47,7 +45,8 @@ export default function MigrationList( {
 							{ m.name }
 						</span>
 						<span className="nre-dashboard__sidebar-item-meta">
-							{ m.post_count.toLocaleString() } post{ m.post_count !== 1 ? 's' : '' }
+							{ m.post_count.toLocaleString() } post
+							{ m.post_count !== 1 ? 's' : '' }
 						</span>
 						<span className="nre-dashboard__sidebar-item-date">
 							{ m.date }

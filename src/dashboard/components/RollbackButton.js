@@ -38,8 +38,8 @@ export default function RollbackButton( {
 					<p>
 						Roll back <strong>{ post.title }</strong> to its
 						pre-migration state? This will restore content,
-						taxonomies, and post type from the revision before
-						this migration.
+						taxonomies, and post type from the revision before this
+						migration.
 					</p>
 					<div className="nre-dashboard__modal-actions">
 						<Button

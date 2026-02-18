@@ -63,15 +63,21 @@ export default function BulkRollback( {
 					className="nre-dashboard__modal"
 				>
 					<p>
-						This will roll back <strong>{ stats.posts_updated.toLocaleString() }</strong>{ ' ' }
-						updated post{ stats.posts_updated !== 1 ? 's' : '' } to their
-						pre-migration state.
+						This will roll back{ ' ' }
+						<strong>
+							{ stats.posts_updated.toLocaleString() }
+						</strong>{ ' ' }
+						updated post{ stats.posts_updated !== 1 ? 's' : '' } to
+						their pre-migration state.
 					</p>
 					{ stats.posts_created > 0 && (
 						<p>
-							<strong>{ stats.posts_created.toLocaleString() }</strong> post{ stats.posts_created !== 1 ? 's' : '' }{ ' ' }
-							created during this migration will be skipped (no
-							prior state to restore).
+							<strong>
+								{ stats.posts_created.toLocaleString() }
+							</strong>{ ' ' }
+							post{ stats.posts_created !== 1 ? 's' : '' } created
+							during this migration will be skipped (no prior
+							state to restore).
 						</p>
 					) }
 					<div className="nre-dashboard__modal-actions">

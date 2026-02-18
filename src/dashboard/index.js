@@ -105,7 +105,9 @@ function App() {
 	}, [ selectedId ] );
 
 	const refreshDetail = useCallback( () => {
-		if ( ! selectedId ) return;
+		if ( ! selectedId ) {
+			return;
+		}
 		apiFetch( { path: `/nre/v1/migrations/${ selectedId }` } )
 			.then( ( data ) => setDetail( data ) )
 			.catch( () => {} );
@@ -130,12 +132,12 @@ function App() {
 				} )
 					.then( ( data ) => {
 						setRollbackStatus( data );
-						if (
-							data.status !== 'running'
-						) {
+						if ( data.status !== 'running' ) {
 							stopPolling();
 							if ( data.status === 'complete' ) {
-								const msg = `Rolled back ${ data.rolled_back.toLocaleString() } post(s). Skipped ${ data.skipped.toLocaleString() }. Errors: ${ data.errors.length }.`;
+								const msg = `Rolled back ${ data.rolled_back.toLocaleString() } post(s). Skipped ${ data.skipped.toLocaleString() }. Errors: ${
+									data.errors.length
+								}.`;
 								setNotice( {
 									type: data.errors.length
 										? 'error'
@@ -289,7 +291,9 @@ function App() {
 						/>
 					</svg>
 					<div>
-						<h2>Newspack <span>/ Migrations</span></h2>
+						<h2>
+							Newspack <span>/ Migrations</span>
+						</h2>
 					</div>
 				</div>
 			</div>

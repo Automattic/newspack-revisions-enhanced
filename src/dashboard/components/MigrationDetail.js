@@ -21,6 +21,17 @@ export default function MigrationDetail( {
 	isRollbackRunning,
 	postsRefreshKey,
 } ) {
+	const [ downloadingCsv, setDownloadingCsv ] = useState( false );
+
+	const handleCsvDownload = async () => {
+		setDownloadingCsv( true );
+		try {
+			await downloadCsv( detail.term_id );
+		} finally {
+			setDownloadingCsv( false );
+		}
+	};
+
 	if ( ! selectedId ) {
 		return (
 			<div className="nre-dashboard__detail">
@@ -40,17 +51,6 @@ export default function MigrationDetail( {
 			</div>
 		);
 	}
-
-	const [ downloadingCsv, setDownloadingCsv ] = useState( false );
-
-	const handleCsvDownload = async () => {
-		setDownloadingCsv( true );
-		try {
-			await downloadCsv( detail.term_id );
-		} finally {
-			setDownloadingCsv( false );
-		}
-	};
 
 	if ( ! detail ) {
 		return (
