@@ -54,6 +54,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install subversion
+        run: sudo apt-get update && sudo apt-get install -y subversion
+
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -63,7 +66,7 @@ jobs:
           coverage: none
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+        run: composer install --no-interaction --prefer-dist --ignore-platform-reqs
 
       - name: Install WordPress test suite
         run: bash bin/install-wp-tests.sh wp_tests root root 127.0.0.1 ${{ matrix.wp }}
