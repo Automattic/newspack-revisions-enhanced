@@ -7,7 +7,7 @@ import { Button, Spinner } from '@wordpress/components';
 import StatsBar from './StatsBar';
 import BulkRollback from './BulkRollback';
 import PostTable from './PostTable';
-import { downloadCsv, downloadReport } from '../utils';
+import { downloadCsv } from '../utils';
 
 export default function MigrationDetail( {
 	detail,
@@ -41,17 +41,7 @@ export default function MigrationDetail( {
 		);
 	}
 
-	const [ exporting, setExporting ] = useState( false );
 	const [ downloadingCsv, setDownloadingCsv ] = useState( false );
-
-	const handleExport = async () => {
-		setExporting( true );
-		try {
-			await downloadReport( detail.term_id );
-		} finally {
-			setExporting( false );
-		}
-	};
 
 	const handleCsvDownload = async () => {
 		setDownloadingCsv( true );
@@ -84,14 +74,6 @@ export default function MigrationDetail( {
 					) }
 				</div>
 				<div className="nre-dashboard__detail-header-actions">
-					<Button
-						variant="primary"
-						isBusy={ exporting }
-						disabled={ exporting || isRollbackRunning }
-						onClick={ handleExport }
-					>
-						{ exporting ? 'Exporting...' : 'Export Report' }
-					</Button>
 					<Button
 						variant="secondary"
 						isBusy={ downloadingCsv }
