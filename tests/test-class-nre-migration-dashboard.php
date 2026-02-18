@@ -142,6 +142,8 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 		$this->assertArrayHasKey( $prefix . '/migrations/(?P<term_id>\\d+)/rollback', $routes );
 		$this->assertArrayHasKey( $prefix . '/migrations/(?P<term_id>\\d+)/diff/(?P<post_id>\\d+)', $routes );
 		$this->assertArrayHasKey( $prefix . '/migrations/(?P<term_id>\\d+)/rollback-all', $routes );
+		$this->assertArrayHasKey( $prefix . '/migrations/(?P<term_id>\\d+)/rollback-status', $routes );
+		$this->assertArrayHasKey( $prefix . '/migrations/(?P<term_id>\\d+)/rollback-cancel', $routes );
 	}
 
 	// --- get_migrations ---
@@ -214,13 +216,32 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 		$this->assertArrayHasKey( 'posts_updated', $data['stats'] );
 	}
 
-	public function test_get_migration_detail_correct_post_data() {
+	public function test_get_migration_detail_correct_stats_data() {
 		$migration = $this->create_migration();
 
 		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] );
 		$request->set_param( 'term_id', $migration['term_id'] );
 
 		$response = $this->dashboard->get_migration_detail( $request );
+		$data     = $response->get_data();
+
+		$this->assertArrayHasKey( 'stats', $data );
+		$this->assertSame( 1, $data['stats']['total_posts'] );
+		$this->assertSame( 0, $data['stats']['posts_created'] );
+		$this->assertSame( 1, $data['stats']['posts_updated'] );
+	}
+
+	public function test_get_migration_posts_correct_post_data() {
+		$migration = $this->create_migration();
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] . '/posts' );
+		$request->set_param( 'term_id', $migration['term_id'] );
+		$request->set_param( 'per_page', 50 );
+		$request->set_param( 'page', 1 );
+		$request->set_param( 'status', 'all' );
+		$request->set_param( 'search', '' );
+
+		$response = $this->dashboard->get_migration_posts( $request );
 		$data     = $response->get_data();
 
 		$this->assertArrayHasKey( 'posts', $data );
@@ -261,7 +282,7 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 
 	// --- rollback_all ---
 
-	public function test_rollback_all_returns_summary() {
+	public function test_rollback_all_starts_background_job() {
 		$migration = $this->create_migration();
 
 		$request = new WP_REST_Request( 'POST', '/nre/v1/migrations/' . $migration['term_id'] . '/rollback-all' );
@@ -271,9 +292,38 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 		$data     = $response->get_data();
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertArrayHasKey( 'rolled_back', $data );
-		$this->assertArrayHasKey( 'skipped', $data );
+		$this->assertSame( 'running', $data['status'] );
 		$this->assertArrayHasKey( 'total', $data );
+		$this->assertGreaterThan( 0, $data['total'] );
+
+		// State option should be set.
+		$state = get_option( 'nre_rollback_' . $migration['term_id'] );
+		$this->assertIsArray( $state );
+		$this->assertSame( 'running', $state['status'] );
+
+		// Clean up.
+		delete_option( 'nre_rollback_' . $migration['term_id'] );
+	}
+
+	public function test_rollback_all_returns_409_when_already_running() {
+		$migration = $this->create_migration();
+
+		// Simulate a running rollback.
+		update_option(
+			'nre_rollback_' . $migration['term_id'],
+			[ 'status' => 'running', 'started_at' => time() ],
+			false
+		);
+
+		$request = new WP_REST_Request( 'POST', '/nre/v1/migrations/' . $migration['term_id'] . '/rollback-all' );
+		$request->set_param( 'term_id', $migration['term_id'] );
+
+		$response = $this->dashboard->rollback_all( $request );
+
+		$this->assertSame( 409, $response->get_status() );
+
+		// Clean up.
+		delete_option( 'nre_rollback_' . $migration['term_id'] );
 	}
 
 	// --- get_post_diff ---
@@ -324,10 +374,14 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 	public function test_created_post_has_compare_from_zero() {
 		$migration = $this->create_migration_with_new_post();
 
-		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] );
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] . '/posts' );
 		$request->set_param( 'term_id', $migration['term_id'] );
+		$request->set_param( 'per_page', 50 );
+		$request->set_param( 'page', 1 );
+		$request->set_param( 'status', 'all' );
+		$request->set_param( 'search', '' );
 
-		$response = $this->dashboard->get_migration_detail( $request );
+		$response = $this->dashboard->get_migration_posts( $request );
 		$data     = $response->get_data();
 		$posts    = $data['posts'];
 
@@ -347,10 +401,14 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 	public function test_created_post_has_revision_url() {
 		$migration = $this->create_migration_with_new_post();
 
-		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] );
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] . '/posts' );
 		$request->set_param( 'term_id', $migration['term_id'] );
+		$request->set_param( 'per_page', 50 );
+		$request->set_param( 'page', 1 );
+		$request->set_param( 'status', 'all' );
+		$request->set_param( 'search', '' );
 
-		$response = $this->dashboard->get_migration_detail( $request );
+		$response = $this->dashboard->get_migration_posts( $request );
 		$data     = $response->get_data();
 		$posts    = $data['posts'];
 
