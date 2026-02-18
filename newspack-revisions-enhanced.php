@@ -28,6 +28,7 @@ require_once NRE_PLUGIN_DIR . 'includes/class-nre-migration-rollback.php';
 require_once NRE_PLUGIN_DIR . 'includes/class-nre-migration-dashboard.php';
 
 add_action( 'init', [ 'NRE_Migration_Context', 'register_taxonomy' ] );
+NRE_Migration_Context::register_hooks();
 add_action( 'plugins_loaded', 'nre_init' );
 
 function nre_init() {

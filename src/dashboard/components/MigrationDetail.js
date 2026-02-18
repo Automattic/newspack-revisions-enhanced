@@ -6,7 +6,7 @@ import { Button, Spinner } from '@wordpress/components';
 import StatsBar from './StatsBar';
 import BulkRollback from './BulkRollback';
 import PostTable from './PostTable';
-import { downloadCsv } from '../utils';
+import { downloadCsv, downloadReport } from '../utils';
 
 export default function MigrationDetail( {
 	detail,
@@ -58,6 +58,14 @@ export default function MigrationDetail( {
 					) }
 				</div>
 				<div className="nre-dashboard__detail-header-actions">
+					<Button
+						variant="primary"
+						onClick={ () =>
+							downloadReport( detail.term_id )
+						}
+					>
+						Export Report
+					</Button>
 					<Button
 						variant="secondary"
 						onClick={ () =>

@@ -41,6 +41,13 @@ class NRE_Migration_Context {
 	private static $term_id = null;
 
 	/**
+	 * Register hooks for cleanup when revisions are deleted.
+	 */
+	public static function register_hooks() {
+		add_action( 'before_delete_post', [ __CLASS__, 'on_revision_delete' ] );
+	}
+
+	/**
 	 * Register the nre_migration taxonomy.
 	 *
 	 * Called on `init` so the taxonomy is available everywhere (admin, CLI, REST).
@@ -189,6 +196,74 @@ class NRE_Migration_Context {
 			$term_id = self::get_or_create_term();
 			if ( $term_id ) {
 				wp_set_object_terms( $post_id, [ $term_id ], self::TAXONOMY, true );
+			}
+		}
+	}
+
+	/**
+	 * Clean up migration data when a revision is deleted.
+	 *
+	 * If the deleted revision was the last one linking a post to a migration,
+	 * the migration term is removed from the parent post. If the migration
+	 * term has no more posts, the term itself is deleted.
+	 *
+	 * @param int $post_id The post (revision) being deleted.
+	 */
+	public static function on_revision_delete( $post_id ) {
+		$post = get_post( $post_id );
+
+		// Only act on revisions.
+		if ( ! $post || 'revision' !== $post->post_type ) {
+			return;
+		}
+
+		$migration_name = get_metadata( 'post', $post_id, '_nre_migration_name', true );
+		$migration_ts   = (int) get_metadata( 'post', $post_id, '_nre_migration_ts', true );
+
+		// Not a migration revision — nothing to clean up.
+		if ( ! $migration_name || ! $migration_ts ) {
+			return;
+		}
+
+		$parent_id = $post->post_parent;
+		if ( ! $parent_id ) {
+			return;
+		}
+
+		// Find the migration term by slug.
+		$slug = sanitize_title( $migration_name . '-' . $migration_ts );
+		$term = get_term_by( 'slug', $slug, self::TAXONOMY );
+
+		if ( ! $term ) {
+			return;
+		}
+
+		// Check if the parent post has any other revisions for this migration.
+		$sibling_revisions = wp_get_post_revisions( $parent_id, [
+			'order' => 'ASC',
+		] );
+
+		$has_other = false;
+		foreach ( $sibling_revisions as $rev ) {
+			if ( $rev->ID === $post_id ) {
+				continue; // Skip the one being deleted.
+			}
+			$rev_name = get_metadata( 'post', $rev->ID, '_nre_migration_name', true );
+			$rev_ts   = (int) get_metadata( 'post', $rev->ID, '_nre_migration_ts', true );
+			if ( $rev_name === $migration_name && $rev_ts === $migration_ts ) {
+				$has_other = true;
+				break;
+			}
+		}
+
+		if ( ! $has_other ) {
+			// Remove the migration term from this post.
+			wp_remove_object_terms( $parent_id, $term->term_id, self::TAXONOMY );
+
+			// If no posts remain in the term, delete it.
+			$fresh_term = get_term( $term->term_id, self::TAXONOMY );
+			if ( $fresh_term && ! is_wp_error( $fresh_term ) && 0 === (int) $fresh_term->count ) {
+				wp_delete_term( $term->term_id, self::TAXONOMY );
 			}
 		}
 	}

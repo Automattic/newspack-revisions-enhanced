@@ -3,6 +3,23 @@
  */
 
 /**
+ * Trigger download of the self-contained HTML migration report.
+ *
+ * @param {number} termId The migration term ID.
+ * @param {string} slug   The migration slug (used in the filename by the server).
+ */
+export function downloadReport( termId ) {
+	const { exportUrl, exportNonce } = window.nreDashboard;
+	const params = new URLSearchParams( {
+		action: 'nre_export_migration',
+		term_id: termId,
+		_wpnonce: exportNonce,
+	} );
+
+	window.location.href = `${ exportUrl }?${ params.toString() }`;
+}
+
+/**
  * Generate and download a CSV of migration posts.
  *
  * @param {string} migrationSlug The migration slug for the filename.
