@@ -92,6 +92,49 @@ class NRE_Migration_Rollback {
 	}
 
 	/**
+	 * Roll back a batch of post IDs.
+	 *
+	 * Processes a slice of posts and returns counts. Does not manage
+	 * migration context or cache invalidation — the caller is responsible.
+	 *
+	 * @param int[]  $post_ids        Array of post IDs to process.
+	 * @param string $migration_name  The migration name to match.
+	 * @param int    $migration_ts    The migration timestamp to match.
+	 * @return array { rolled_back: int, skipped: int, errors: array }
+	 */
+	public function rollback_batch( $post_ids, $migration_name, $migration_ts ) {
+		$rolled_back = 0;
+		$skipped     = 0;
+		$errors      = [];
+
+		foreach ( $post_ids as $post_id ) {
+			$pre_revision_id = $this->find_pre_migration_revision( $post_id, $migration_name, $migration_ts );
+
+			if ( is_wp_error( $pre_revision_id ) ) {
+				++$skipped;
+				continue;
+			}
+
+			$result = $this->execute_rollback( $post_id, $pre_revision_id );
+
+			if ( is_wp_error( $result ) ) {
+				$errors[] = [
+					'post_id' => $post_id,
+					'message' => $result->get_error_message(),
+				];
+			} else {
+				++$rolled_back;
+			}
+		}
+
+		return [
+			'rolled_back' => $rolled_back,
+			'skipped'     => $skipped,
+			'errors'      => $errors,
+		];
+	}
+
+	/**
 	 * Find the revision immediately before the first migration revision.
 	 *
 	 * @param int    $post_id        The post ID.

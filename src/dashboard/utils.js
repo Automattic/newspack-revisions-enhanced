@@ -6,7 +6,6 @@
  * Trigger download of the self-contained HTML migration report.
  *
  * @param {number} termId The migration term ID.
- * @param {string} slug   The migration slug (used in the filename by the server).
  */
 export function downloadReport( termId ) {
 	const { exportUrl, exportNonce } = window.nreDashboard;
@@ -16,32 +15,36 @@ export function downloadReport( termId ) {
 		_wpnonce: exportNonce,
 	} );
 
-	window.location.href = `${ exportUrl }?${ params.toString() }`;
+	window.open( `${ exportUrl }?${ params.toString() }`, '_blank' );
 }
 
 /**
- * Generate and download a CSV of migration posts.
+ * Download a CSV of migration posts from the server.
  *
- * @param {string} migrationSlug The migration slug for the filename.
- * @param {Array}  posts         Array of post objects from the detail response.
+ * @param {number} termId The migration term ID.
  */
-export function downloadCsv( migrationSlug, posts ) {
-	const headers = [ 'Post ID', 'Title', 'Status', 'Post Type', 'Revision URL' ];
-	const rows = posts.map( ( post ) => [
-		post.post_id,
-		`"${ ( post.title || '' ).replace( /"/g, '""' ) }"`,
-		post.status,
-		post.post_type,
-		post.revision_url || '',
-	] );
+export async function downloadCsv( termId ) {
+	const { exportUrl, exportNonce } = window.nreDashboard;
+	const params = new URLSearchParams( {
+		action: 'nre_export_migration',
+		term_id: termId,
+		format: 'csv',
+		_wpnonce: exportNonce,
+	} );
 
-	const csv = [ headers.join( ',' ), ...rows.map( ( r ) => r.join( ',' ) ) ].join( '\n' );
-	const blob = new Blob( [ csv ], { type: 'text/csv;charset=utf-8;' } );
+	const response = await fetch( `${ exportUrl }?${ params.toString() }`, {
+		credentials: 'same-origin',
+	} );
+
+	const disposition = response.headers.get( 'Content-Disposition' ) || '';
+	const match = disposition.match( /filename="(.+?)"/ );
+	const filename = match ? match[ 1 ] : `migration-${ termId }-posts.csv`;
+
+	const blob = await response.blob();
 	const url = URL.createObjectURL( blob );
-
 	const link = document.createElement( 'a' );
 	link.href = url;
-	link.download = `migration-${ migrationSlug }-posts.csv`;
+	link.download = filename;
 	document.body.appendChild( link );
 	link.click();
 	document.body.removeChild( link );

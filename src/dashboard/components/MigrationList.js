@@ -47,7 +47,7 @@ export default function MigrationList( {
 							{ m.name }
 						</span>
 						<span className="nre-dashboard__sidebar-item-meta">
-							{ m.post_count } post{ m.post_count !== 1 ? 's' : '' }
+							{ m.post_count.toLocaleString() } post{ m.post_count !== 1 ? 's' : '' }
 						</span>
 						<span className="nre-dashboard__sidebar-item-date">
 							{ m.date }

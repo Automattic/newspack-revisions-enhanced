@@ -273,6 +273,7 @@ body.nre-dashboard-page {
 		font-weight: 600;
 		color: $text-secondary;
 		padding: 12px 16px;
+		border-top: none;
 		border-bottom: 1px solid $border;
 	}
 
@@ -389,8 +390,8 @@ body.nre-dashboard-page {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	margin-bottom: 0;
-	border-bottom: 2px solid $border;
+	margin-bottom: 12px;
+	border-bottom: 1px solid $border;
 	padding-bottom: 0;
 }
 
@@ -562,8 +563,10 @@ body.nre-dashboard-page {
 		border: 1px solid $border;
 		font-size: 13px;
 		line-height: 1.5;
+		table-layout: fixed;
 
 		td {
+			width: 50%;
 			padding: 4px 8px;
 			vertical-align: top;
 			border-bottom: 1px solid $border-light;
@@ -576,6 +579,13 @@ body.nre-dashboard-page {
 				background: #f5c6cb;
 				text-decoration: none;
 			}
+
+			&::before {
+				content: "\2212";
+				font-weight: 700;
+				color: #a50000;
+				margin-right: 4px;
+			}
 		}
 
 		td.diff-addedline {
@@ -585,10 +595,36 @@ body.nre-dashboard-page {
 				background: #b7dfbf;
 				text-decoration: none;
 			}
+
+			&::before {
+				content: "+";
+				font-weight: 700;
+				color: #1a7431;
+				margin-right: 4px;
+			}
 		}
 
 		td.diff-context {
 			color: $text-secondary;
+		}
+
+		// Hide WP core indicator column and dashicons — replaced by ::before above.
+		col.middle {
+			display: none;
+		}
+
+		col.left,
+		col.right {
+			width: 50% !important;
+		}
+
+		td.diff-indicator {
+			display: none;
+		}
+
+		.dashicons,
+		.screen-reader-text {
+			display: none;
 		}
 	}
 }
@@ -619,4 +655,35 @@ body.nre-dashboard-page {
 
 .nre-dashboard__content > .components-notice {
 	margin: 0 0 16px;
+}
+
+// ─── Rollback progress ──────────────────────────────────────────────────────
+
+.nre-dashboard__rollback-progress {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.nre-dashboard__rollback-progress-text {
+	font-size: 13px;
+	font-weight: 600;
+	color: $text-primary;
+	white-space: nowrap;
+}
+
+.nre-dashboard__rollback-progress-bar {
+	width: 180px;
+	height: 8px;
+	background: $border;
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.nre-dashboard__rollback-progress-fill {
+	height: 100%;
+	background: $accent;
+	border-radius: 4px;
+	transition: width 300ms ease-out;
 }

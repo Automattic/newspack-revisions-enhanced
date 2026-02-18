@@ -1,13 +1,21 @@
 /**
  * Migration Dashboard — Entry point.
  */
-import { render, useState, useEffect, useCallback } from '@wordpress/element';
+import {
+	render,
+	useState,
+	useEffect,
+	useCallback,
+	useRef,
+} from '@wordpress/element';
 import apiFetch from '@wordpress/api-fetch';
 import { Notice as WPNotice } from '@wordpress/components';
 import './style.scss';
 
 import MigrationList from './components/MigrationList';
 import MigrationDetail from './components/MigrationDetail';
+
+const ROLLBACK_POLL_INTERVAL = 2000;
 
 /**
  * Read the "migration" query parameter from the current URL.
@@ -43,8 +51,11 @@ function App() {
 	const [ detailLoading, setDetailLoading ] = useState( false );
 	const [ rollingBackIds, setRollingBackIds ] = useState( new Set() );
 	const [ notice, setNotice ] = useState( null );
+	const [ postsRefreshKey, setPostsRefreshKey ] = useState( 0 );
+	const [ rollbackStatus, setRollbackStatus ] = useState( null );
+	const pollRef = useRef( null );
 
-	// Sync selectedId → URL.
+	// Sync selectedId -> URL.
 	const handleSelect = useCallback( ( id ) => {
 		setSelectedId( id );
 		setMigrationIdInUrl( id );
@@ -60,7 +71,7 @@ function App() {
 	}, [] );
 
 	// Fetch migrations list.
-	useEffect( () => {
+	const fetchMigrations = useCallback( () => {
 		apiFetch( { path: '/nre/v1/migrations' } )
 			.then( ( data ) => {
 				setMigrations( data );
@@ -71,7 +82,11 @@ function App() {
 			} );
 	}, [] );
 
-	// Fetch detail when selection changes.
+	useEffect( () => {
+		fetchMigrations();
+	}, [ fetchMigrations ] );
+
+	// Fetch detail (stats only) when selection changes.
 	useEffect( () => {
 		if ( ! selectedId ) {
 			setDetail( null );
@@ -94,7 +109,89 @@ function App() {
 		apiFetch( { path: `/nre/v1/migrations/${ selectedId }` } )
 			.then( ( data ) => setDetail( data ) )
 			.catch( () => {} );
+		setPostsRefreshKey( ( k ) => k + 1 );
 	}, [ selectedId ] );
+
+	// Stop polling helper.
+	const stopPolling = useCallback( () => {
+		if ( pollRef.current ) {
+			clearInterval( pollRef.current );
+			pollRef.current = null;
+		}
+	}, [] );
+
+	// Start polling for rollback status.
+	const startPolling = useCallback(
+		( termId ) => {
+			stopPolling();
+			const poll = () => {
+				apiFetch( {
+					path: `/nre/v1/migrations/${ termId }/rollback-status`,
+				} )
+					.then( ( data ) => {
+						setRollbackStatus( data );
+						if (
+							data.status !== 'running'
+						) {
+							stopPolling();
+							if ( data.status === 'complete' ) {
+								const msg = `Rolled back ${ data.rolled_back.toLocaleString() } post(s). Skipped ${ data.skipped.toLocaleString() }. Errors: ${ data.errors.length }.`;
+								setNotice( {
+									type: data.errors.length
+										? 'error'
+										: 'success',
+									message: msg,
+								} );
+								refreshDetail();
+								fetchMigrations();
+							} else if ( data.status === 'cancelled' ) {
+								setNotice( {
+									type: 'warning',
+									message: `Rollback cancelled. Rolled back ${ data.rolled_back.toLocaleString() } of ${ data.total.toLocaleString() } posts before cancellation.`,
+								} );
+								refreshDetail();
+								fetchMigrations();
+							} else if ( data.status === 'failed' ) {
+								setNotice( {
+									type: 'error',
+									message: 'Rollback failed.',
+								} );
+							}
+						}
+					} )
+					.catch( () => {
+						stopPolling();
+					} );
+			};
+			poll();
+			pollRef.current = setInterval( poll, ROLLBACK_POLL_INTERVAL );
+		},
+		[ stopPolling, refreshDetail, fetchMigrations ]
+	);
+
+	// Check rollback status when selectedId changes (resume progress display).
+	useEffect( () => {
+		if ( ! selectedId ) {
+			setRollbackStatus( null );
+			stopPolling();
+			return;
+		}
+
+		apiFetch( {
+			path: `/nre/v1/migrations/${ selectedId }/rollback-status`,
+		} )
+			.then( ( data ) => {
+				setRollbackStatus( data );
+				if ( data.status === 'running' ) {
+					startPolling( selectedId );
+				}
+			} )
+			.catch( () => {
+				setRollbackStatus( null );
+			} );
+
+		return () => stopPolling();
+	}, [ selectedId, startPolling, stopPolling ] );
 
 	const handleRollback = useCallback(
 		async ( postId ) => {
@@ -127,32 +224,52 @@ function App() {
 
 	const handleBulkRollback = useCallback( async () => {
 		setNotice( null );
-		setRollingBackIds( ( prev ) => new Set( [ ...prev, 'bulk' ] ) );
 
 		try {
 			const result = await apiFetch( {
 				path: `/nre/v1/migrations/${ selectedId }/rollback-all`,
 				method: 'POST',
 			} );
-			const msg = `Rolled back ${ result.rolled_back } post(s). Skipped ${ result.skipped }. Errors: ${ result.errors.length }.`;
-			setNotice( {
-				type: result.errors.length ? 'error' : 'success',
-				message: msg,
+
+			if ( result.status === 'running' ) {
+				setRollbackStatus( {
+					status: 'running',
+					total: result.total,
+					processed: 0,
+					rolled_back: 0,
+					skipped: 0,
+					errors: [],
+				} );
+				startPolling( selectedId );
+			}
+		} catch ( err ) {
+			if ( err.data?.status === 409 ) {
+				startPolling( selectedId );
+			} else {
+				setNotice( {
+					type: 'error',
+					message: err.message || 'Bulk rollback failed.',
+				} );
+			}
+		}
+	}, [ selectedId, startPolling ] );
+
+	const handleCancelRollback = useCallback( async () => {
+		try {
+			await apiFetch( {
+				path: `/nre/v1/migrations/${ selectedId }/rollback-cancel`,
+				method: 'POST',
 			} );
-			refreshDetail();
 		} catch ( err ) {
 			setNotice( {
 				type: 'error',
-				message: err.message || 'Bulk rollback failed.',
-			} );
-		} finally {
-			setRollingBackIds( ( prev ) => {
-				const next = new Set( prev );
-				next.delete( 'bulk' );
-				return next;
+				message: err.message || 'Failed to cancel rollback.',
 			} );
 		}
-	}, [ selectedId, refreshDetail ] );
+	}, [ selectedId ] );
+
+	const isRollbackRunning =
+		rollbackStatus && rollbackStatus.status === 'running';
 
 	return (
 		<div className="nre-dashboard">
@@ -202,6 +319,10 @@ function App() {
 						rollingBackIds={ rollingBackIds }
 						onRollback={ handleRollback }
 						onBulkRollback={ handleBulkRollback }
+						onCancelRollback={ handleCancelRollback }
+						rollbackStatus={ rollbackStatus }
+						isRollbackRunning={ isRollbackRunning }
+						postsRefreshKey={ postsRefreshKey }
 					/>
 				</div>
 			</div>

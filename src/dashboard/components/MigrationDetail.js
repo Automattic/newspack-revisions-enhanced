@@ -1,6 +1,7 @@
 /**
  * MigrationDetail — Right panel for the selected migration.
  */
+import { useState } from '@wordpress/element';
 import { Button, Spinner } from '@wordpress/components';
 
 import StatsBar from './StatsBar';
@@ -15,6 +16,10 @@ export default function MigrationDetail( {
 	rollingBackIds,
 	onRollback,
 	onBulkRollback,
+	onCancelRollback,
+	rollbackStatus,
+	isRollbackRunning,
+	postsRefreshKey,
 } ) {
 	if ( ! selectedId ) {
 		return (
@@ -35,6 +40,27 @@ export default function MigrationDetail( {
 			</div>
 		);
 	}
+
+	const [ exporting, setExporting ] = useState( false );
+	const [ downloadingCsv, setDownloadingCsv ] = useState( false );
+
+	const handleExport = async () => {
+		setExporting( true );
+		try {
+			await downloadReport( detail.term_id );
+		} finally {
+			setExporting( false );
+		}
+	};
+
+	const handleCsvDownload = async () => {
+		setDownloadingCsv( true );
+		try {
+			await downloadCsv( detail.term_id );
+		} finally {
+			setDownloadingCsv( false );
+		}
+	};
 
 	if ( ! detail ) {
 		return (
@@ -60,24 +86,25 @@ export default function MigrationDetail( {
 				<div className="nre-dashboard__detail-header-actions">
 					<Button
 						variant="primary"
-						onClick={ () =>
-							downloadReport( detail.term_id )
-						}
+						isBusy={ exporting }
+						disabled={ exporting || isRollbackRunning }
+						onClick={ handleExport }
 					>
-						Export Report
+						{ exporting ? 'Exporting...' : 'Export Report' }
 					</Button>
 					<Button
 						variant="secondary"
-						onClick={ () =>
-							downloadCsv( detail.slug, detail.posts )
-						}
+						isBusy={ downloadingCsv }
+						disabled={ downloadingCsv || isRollbackRunning }
+						onClick={ handleCsvDownload }
 					>
-						Download CSV
+						{ downloadingCsv ? 'Downloading...' : 'Download CSV' }
 					</Button>
 					<BulkRollback
 						stats={ detail.stats }
-						isRollingBack={ rollingBackIds.has( 'bulk' ) }
 						onBulkRollback={ onBulkRollback }
+						onCancelRollback={ onCancelRollback }
+						rollbackStatus={ rollbackStatus }
 					/>
 				</div>
 			</div>
@@ -85,10 +112,12 @@ export default function MigrationDetail( {
 			<StatsBar stats={ detail.stats } />
 
 			<PostTable
-				posts={ detail.posts }
 				termId={ detail.term_id }
+				stats={ detail.stats }
 				rollingBackIds={ rollingBackIds }
 				onRollback={ onRollback }
+				refreshKey={ postsRefreshKey }
+				isRollbackRunning={ isRollbackRunning }
 			/>
 		</div>
 	);

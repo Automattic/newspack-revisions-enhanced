@@ -7,6 +7,7 @@ import { Button, Modal } from '@wordpress/components';
 export default function RollbackButton( {
 	post,
 	isRollingBack,
+	disabled,
 	onRollback,
 } ) {
 	const [ showConfirm, setShowConfirm ] = useState( false );
@@ -22,7 +23,7 @@ export default function RollbackButton( {
 				size="compact"
 				isDestructive
 				isBusy={ isRollingBack }
-				disabled={ isRollingBack }
+				disabled={ isRollingBack || disabled }
 				onClick={ () => setShowConfirm( true ) }
 			>
 				{ isRollingBack ? 'Rolling back...' : 'Rollback' }

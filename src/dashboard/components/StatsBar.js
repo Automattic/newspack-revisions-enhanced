@@ -16,7 +16,7 @@ export default function StatsBar( { stats } ) {
 		<div className="nre-dashboard__stats">
 			{ cards.map( ( card ) => (
 				<div key={ card.label } className="nre-dashboard__stat-card">
-					<div className="nre-dashboard__stat-value">{ card.value }</div>
+					<div className="nre-dashboard__stat-value">{ card.value.toLocaleString() }</div>
 					<div className="nre-dashboard__stat-label">{ card.label }</div>
 				</div>
 			) ) }

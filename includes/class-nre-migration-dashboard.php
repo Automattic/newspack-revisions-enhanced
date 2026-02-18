@@ -36,6 +36,11 @@ class NRE_Migration_Dashboard {
 	}
 
 	/**
+	 * Batch size for background rollback.
+	 */
+	const ROLLBACK_BATCH_SIZE = 200;
+
+	/**
 	 * Register hooks.
 	 */
 	public function register_hooks() {
@@ -43,6 +48,7 @@ class NRE_Migration_Dashboard {
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
 		add_action( 'admin_post_nre_export_migration', [ $this, 'handle_export' ] );
+		add_action( 'admin_post_nopriv_nre_rollback_batch', [ $this, 'handle_rollback_batch' ] );
 		add_filter( 'admin_body_class', [ $this, 'add_body_class' ] );
 	}
 
@@ -122,6 +128,35 @@ class NRE_Migration_Dashboard {
 				'exportNonce' => wp_create_nonce( 'nre_export_migration' ),
 			]
 		);
+
+		$this->cleanup_stale_rollback_options();
+	}
+
+	/**
+	 * Delete rollback state options older than 1 hour that are not running.
+	 */
+	private function cleanup_stale_rollback_options() {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$option_names = $wpdb->get_col(
+			"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'nre\_rollback\_%'"
+		);
+
+		$cutoff = time() - HOUR_IN_SECONDS;
+
+		foreach ( $option_names as $option_name ) {
+			$state = get_option( $option_name );
+			if ( ! is_array( $state ) || empty( $state['started_at'] ) ) {
+				continue;
+			}
+			if ( 'running' === $state['status'] ) {
+				continue;
+			}
+			if ( $state['started_at'] < $cutoff ) {
+				delete_option( $option_name );
+			}
+		}
 	}
 
 	/**
@@ -151,6 +186,46 @@ class NRE_Migration_Dashboard {
 						'validate_callback' => function ( $param ) {
 							return is_numeric( $param );
 						},
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations/(?P<term_id>\d+)/posts',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_migration_posts' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'term_id'  => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
+					'per_page' => [
+						'default'           => 50,
+						'sanitize_callback' => function ( $param ) {
+							return min( max( (int) $param, 1 ), 100 );
+						},
+					],
+					'page'     => [
+						'default'           => 1,
+						'sanitize_callback' => function ( $param ) {
+							return max( (int) $param, 1 );
+						},
+					],
+					'status'   => [
+						'default'           => 'all',
+						'validate_callback' => function ( $param ) {
+							return in_array( $param, [ 'all', 'created', 'updated' ], true );
+						},
+					],
+					'search'   => [
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_text_field',
 					],
 				],
 			]
@@ -221,6 +296,42 @@ class NRE_Migration_Dashboard {
 				],
 			]
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations/(?P<term_id>\d+)/rollback-status',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_rollback_status' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'term_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/migrations/(?P<term_id>\d+)/rollback-cancel',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ $this, 'cancel_rollback' ],
+				'permission_callback' => [ $this, 'check_permission' ],
+				'args'                => [
+					'term_id' => [
+						'required'          => true,
+						'validate_callback' => function ( $param ) {
+							return is_numeric( $param );
+						},
+					],
+				],
+			]
+		);
 	}
 
 	/**
@@ -269,7 +380,9 @@ class NRE_Migration_Dashboard {
 	}
 
 	/**
-	 * GET /migrations/<term_id> — Migration detail with posts and stats.
+	 * GET /migrations/<term_id> — Migration detail with stats (no posts).
+	 *
+	 * Posts are served by the separate paginated endpoint.
 	 *
 	 * @param WP_REST_Request $request The request object.
 	 * @return WP_REST_Response
@@ -285,39 +398,18 @@ class NRE_Migration_Dashboard {
 		$timestamp      = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
 		$migration_name = $term->name;
 
-		// Get all posts assigned to this migration term.
-		$post_ids = get_posts(
-			[
-				'post_type'      => 'any',
-				'post_status'    => 'any',
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'tax_query'      => [
-					[
-						'taxonomy' => NRE_Migration_Context::TAXONOMY,
-						'terms'    => $term_id,
-					],
-				],
-			]
-		);
-
-		$posts           = [];
+		$statuses        = $this->get_post_statuses( $term_id, $migration_name, $timestamp );
 		$posts_created   = 0;
 		$posts_updated   = 0;
 		$total_revisions = 0;
 
-		foreach ( $post_ids as $post_id ) {
-			$post_data = $this->get_post_migration_data( $post_id, $migration_name, $timestamp );
-
-			$posts[] = $post_data;
-
-			if ( 'created' === $post_data['status'] ) {
+		foreach ( $statuses as $info ) {
+			if ( 'created' === $info['status'] ) {
 				++$posts_created;
 			} else {
 				++$posts_updated;
 			}
-
-			$total_revisions += $post_data['revision_count'];
+			$total_revisions += $info['revision_count'];
 		}
 
 		return new WP_REST_Response(
@@ -328,15 +420,192 @@ class NRE_Migration_Dashboard {
 				'timestamp' => $timestamp,
 				'date'      => $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '',
 				'stats'     => [
-					'total_posts'     => count( $post_ids ),
+					'total_posts'     => count( $statuses ),
 					'posts_created'   => $posts_created,
 					'posts_updated'   => $posts_updated,
 					'total_revisions' => $total_revisions,
 				],
-				'posts'     => $posts,
 			],
 			200
 		);
+	}
+
+	/**
+	 * GET /migrations/<term_id>/posts — Paginated posts for a migration.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function get_migration_posts( $request ) {
+		$term_id  = (int) $request['term_id'];
+		$per_page = (int) $request->get_param( 'per_page' );
+		$page     = (int) $request->get_param( 'page' );
+		$status   = $request->get_param( 'status' );
+		$search   = $request->get_param( 'search' );
+
+		$term = get_term( $term_id, NRE_Migration_Context::TAXONOMY );
+		if ( ! $term || is_wp_error( $term ) ) {
+			return new WP_REST_Response( [ 'message' => 'Migration not found.' ], 404 );
+		}
+
+		$timestamp      = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
+		$migration_name = $term->name;
+
+		$statuses = $this->get_post_statuses( $term_id, $migration_name, $timestamp );
+		$post_ids = array_keys( $statuses );
+
+		// Filter by status.
+		if ( 'all' !== $status ) {
+			$post_ids = array_filter(
+				$post_ids,
+				function ( $pid ) use ( $statuses, $status ) {
+					return $statuses[ $pid ]['status'] === $status;
+				}
+			);
+		}
+
+		// Filter by search (title LIKE or exact ID match).
+		if ( ! empty( $search ) ) {
+			$search   = trim( $search );
+			$post_ids = $this->filter_posts_by_search( $post_ids, $search );
+		}
+
+		$post_ids = array_values( $post_ids );
+		$total    = count( $post_ids );
+		$pages    = max( 1, (int) ceil( $total / $per_page ) );
+		$page     = min( $page, $pages );
+		$offset   = ( $page - 1 ) * $per_page;
+		$page_ids = array_slice( $post_ids, $offset, $per_page );
+
+		// Build full data only for the current page.
+		$posts = [];
+		foreach ( $page_ids as $post_id ) {
+			$posts[] = $this->get_post_migration_data( $post_id, $migration_name, $timestamp );
+		}
+
+		return new WP_REST_Response(
+			[
+				'posts'       => $posts,
+				'total'       => $total,
+				'total_pages' => $pages,
+				'page'        => $page,
+				'per_page'    => $per_page,
+			],
+			200
+		);
+	}
+
+	/**
+	 * Compute and cache post status classifications for a migration.
+	 *
+	 * @param int    $term_id        The migration term ID.
+	 * @param string $migration_name The migration name.
+	 * @param int    $migration_ts   The migration timestamp.
+	 * @return array Associative array of post_id => [ 'status' => string, 'revision_count' => int ].
+	 */
+	private function get_post_statuses( $term_id, $migration_name, $migration_ts ) {
+		$cache_key = 'nre_migration_statuses_' . $term_id;
+		$cached    = get_transient( $cache_key );
+
+		if ( false !== $cached ) {
+			return $cached;
+		}
+
+		global $wpdb;
+
+		$taxonomy = NRE_Migration_Context::TAXONOMY;
+
+		// One query: scan all revisions for posts in this migration term.
+		// LEFT JOIN on migration meta lets us count migration revisions (both meta match)
+		// and find the earliest migration revision per post. MIN(r.ID) gives the absolute
+		// first revision — if it's older than the first migration revision, the post
+		// existed before the migration ("updated"), otherwise it was "created".
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT r.post_parent AS post_id,
+						SUM( CASE WHEN mn.meta_id IS NOT NULL AND mt.meta_id IS NOT NULL THEN 1 ELSE 0 END ) AS revision_count,
+						MIN( CASE WHEN mn.meta_id IS NOT NULL AND mt.meta_id IS NOT NULL THEN r.ID ELSE NULL END ) AS first_migration_rev_id,
+						MIN( r.ID ) AS min_rev_id
+				 FROM {$wpdb->posts} r
+				 INNER JOIN {$wpdb->term_relationships} tr ON r.post_parent = tr.object_id
+				 INNER JOIN {$wpdb->term_taxonomy} tt
+					ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.term_id = %d AND tt.taxonomy = %s
+				 LEFT JOIN {$wpdb->postmeta} mn
+					ON r.ID = mn.post_id AND mn.meta_key = '_nre_migration_name' AND mn.meta_value = %s
+				 LEFT JOIN {$wpdb->postmeta} mt
+					ON r.ID = mt.post_id AND mt.meta_key = '_nre_migration_ts' AND mt.meta_value = %s
+				 WHERE r.post_type = 'revision'
+				 GROUP BY r.post_parent
+				 HAVING revision_count > 0",
+				$term_id,
+				$taxonomy,
+				$migration_name,
+				(string) $migration_ts
+			)
+		);
+
+		$statuses = [];
+
+		foreach ( $rows as $row ) {
+			$post_id = (int) $row->post_id;
+			$status  = ( (int) $row->min_rev_id < (int) $row->first_migration_rev_id ) ? 'updated' : 'created';
+
+			$statuses[ $post_id ] = [
+				'status'         => $status,
+				'revision_count' => (int) $row->revision_count,
+			];
+		}
+
+		set_transient( $cache_key, $statuses );
+
+		return $statuses;
+	}
+
+	/**
+	 * Invalidate the cached post statuses for a migration.
+	 *
+	 * @param int $term_id The migration term ID.
+	 */
+	private function invalidate_status_cache( $term_id ) {
+		delete_transient( 'nre_migration_statuses_' . $term_id );
+	}
+
+	/**
+	 * Filter post IDs by search term (title LIKE or exact ID match).
+	 *
+	 * @param array  $post_ids Array of post IDs to filter.
+	 * @param string $search   The search string.
+	 * @return array Filtered post IDs.
+	 */
+	private function filter_posts_by_search( $post_ids, $search ) {
+		if ( empty( $post_ids ) ) {
+			return [];
+		}
+
+		global $wpdb;
+
+		// Exact ID match.
+		if ( is_numeric( $search ) ) {
+			$search_id = (int) $search;
+			if ( in_array( $search_id, $post_ids, true ) ) {
+				return [ $search_id ];
+			}
+		}
+
+		// Title LIKE search.
+		$id_placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$matching_ids = $wpdb->get_col(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Placeholder string is safe.
+				"SELECT ID FROM {$wpdb->posts} WHERE ID IN ($id_placeholders) AND post_title LIKE %s",
+				...array_merge( $post_ids, [ '%' . $wpdb->esc_like( $search ) . '%' ] )
+			)
+		);
+
+		return array_map( 'intval', $matching_ids );
 	}
 
 	/**
@@ -427,6 +696,8 @@ class NRE_Migration_Dashboard {
 			return new WP_REST_Response( [ 'message' => $result->get_error_message() ], 400 );
 		}
 
+		$this->invalidate_status_cache( $term_id );
+
 		return new WP_REST_Response(
 			[
 				'success' => true,
@@ -441,7 +712,7 @@ class NRE_Migration_Dashboard {
 	}
 
 	/**
-	 * POST /migrations/<term_id>/rollback-all — Roll back all rollbackable posts.
+	 * POST /migrations/<term_id>/rollback-all — Start background bulk rollback.
 	 *
 	 * @param WP_REST_Request $request The request object.
 	 * @return WP_REST_Response
@@ -454,11 +725,234 @@ class NRE_Migration_Dashboard {
 			return new WP_REST_Response( [ 'message' => 'Migration not found.' ], 404 );
 		}
 
-		$timestamp = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
+		$option_key = 'nre_rollback_' . $term_id;
+		$existing   = get_option( $option_key );
 
-		$result = $this->rollback->rollback_migration( $term->name, $timestamp, $term_id );
+		if ( is_array( $existing ) && 'running' === $existing['status'] ) {
+			return new WP_REST_Response( [ 'message' => 'A rollback is already running for this migration.' ], 409 );
+		}
 
-		return new WP_REST_Response( $result, 200 );
+		$timestamp      = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
+		$migration_name = $term->name;
+
+		$post_ids = get_posts(
+			[
+				'post_type'      => 'any',
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'tax_query'      => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+					[
+						'taxonomy' => NRE_Migration_Context::TAXONOMY,
+						'terms'    => $term_id,
+					],
+				],
+			]
+		);
+
+		if ( empty( $post_ids ) ) {
+			return new WP_REST_Response(
+				[
+					'status'      => 'complete',
+					'total'       => 0,
+					'rolled_back' => 0,
+					'skipped'     => 0,
+					'errors'      => [],
+				],
+				200
+			);
+		}
+
+		NRE_Migration_Context::start( 'Rollback: ' . $migration_name );
+
+		$secret = wp_generate_password( 32, false );
+
+		$state = [
+			'status'         => 'running',
+			'total'          => count( $post_ids ),
+			'processed'      => 0,
+			'rolled_back'    => 0,
+			'skipped'        => 0,
+			'errors'         => [],
+			'started_at'     => time(),
+			'offset'         => 0,
+			'post_ids'       => $post_ids,
+			'migration_name' => $migration_name,
+			'migration_ts'   => $timestamp,
+			'secret'         => $secret,
+		];
+
+		update_option( $option_key, $state, false );
+
+		$this->fire_rollback_loopback( $term_id, $secret );
+
+		return new WP_REST_Response(
+			[
+				'status' => 'running',
+				'total'  => count( $post_ids ),
+			],
+			200
+		);
+	}
+
+	/**
+	 * GET /migrations/<term_id>/rollback-status — Current rollback state.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function get_rollback_status( $request ) {
+		$term_id    = (int) $request['term_id'];
+		$option_key = 'nre_rollback_' . $term_id;
+		$state      = get_option( $option_key );
+
+		if ( ! is_array( $state ) ) {
+			return new WP_REST_Response( [ 'status' => 'idle' ], 200 );
+		}
+
+		return new WP_REST_Response(
+			[
+				'status'      => $state['status'],
+				'total'       => $state['total'],
+				'processed'   => $state['processed'],
+				'rolled_back' => $state['rolled_back'],
+				'skipped'     => $state['skipped'],
+				'errors'      => $state['errors'],
+				'started_at'  => $state['started_at'],
+			],
+			200
+		);
+	}
+
+	/**
+	 * POST /migrations/<term_id>/rollback-cancel — Cancel a running rollback.
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return WP_REST_Response
+	 */
+	public function cancel_rollback( $request ) {
+		$term_id    = (int) $request['term_id'];
+		$option_key = 'nre_rollback_' . $term_id;
+		$state      = get_option( $option_key );
+
+		if ( ! is_array( $state ) || 'running' !== $state['status'] ) {
+			return new WP_REST_Response( [ 'message' => 'No running rollback to cancel.' ], 400 );
+		}
+
+		$state['status'] = 'cancelled';
+		unset( $state['secret'] );
+		update_option( $option_key, $state, false );
+
+		NRE_Migration_Context::stop();
+		$this->invalidate_status_cache( $term_id );
+
+		return new WP_REST_Response( [ 'status' => 'cancelled' ], 200 );
+	}
+
+	/**
+	 * Loopback batch handler for background rollback.
+	 *
+	 * Uses admin_post_nopriv because the loopback won't carry user cookies.
+	 * Auth is via the secret token stored in the rollback option.
+	 */
+	public function handle_rollback_batch() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Auth via secret token, not nonce.
+		$term_id = isset( $_POST['term_id'] ) ? (int) $_POST['term_id'] : 0;
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$secret = isset( $_POST['secret'] ) ? sanitize_text_field( wp_unslash( $_POST['secret'] ) ) : '';
+
+		if ( ! $term_id || ! $secret ) {
+			wp_die( 'Invalid request.', 400 );
+		}
+
+		$option_key = 'nre_rollback_' . $term_id;
+		$state      = get_option( $option_key );
+
+		if ( ! is_array( $state ) || ! hash_equals( $state['secret'], $secret ) ) {
+			wp_die( 'Unauthorized.', 403 );
+		}
+
+		if ( 'running' !== $state['status'] ) {
+			exit;
+		}
+
+		// Restore migration context for this batch.
+		NRE_Migration_Context::start( 'Rollback: ' . $state['migration_name'] );
+
+		$offset    = $state['offset'];
+		$batch_ids = array_slice( $state['post_ids'], $offset, self::ROLLBACK_BATCH_SIZE );
+
+		if ( empty( $batch_ids ) ) {
+			$this->finish_rollback( $option_key, $state, $term_id );
+			exit;
+		}
+
+		$result = $this->rollback->rollback_batch( $batch_ids, $state['migration_name'], $state['migration_ts'] );
+
+		$state['offset']      += count( $batch_ids );
+		$state['processed']   += count( $batch_ids );
+		$state['rolled_back'] += $result['rolled_back'];
+		$state['skipped']     += $result['skipped'];
+
+		// Cap errors at last 50.
+		$state['errors'] = array_merge( $state['errors'], $result['errors'] );
+		if ( count( $state['errors'] ) > 50 ) {
+			$state['errors'] = array_slice( $state['errors'], -50 );
+		}
+
+		// Check if done.
+		if ( $state['offset'] >= count( $state['post_ids'] ) ) {
+			$this->finish_rollback( $option_key, $state, $term_id );
+			exit;
+		}
+
+		update_option( $option_key, $state, false );
+
+		NRE_Migration_Context::stop();
+
+		wp_cache_flush();
+
+		$this->fire_rollback_loopback( $term_id, $secret );
+
+		exit;
+	}
+
+	/**
+	 * Mark rollback as complete and clean up.
+	 *
+	 * @param string $option_key The option key.
+	 * @param array  $state      The current state array.
+	 * @param int    $term_id    The migration term ID.
+	 */
+	private function finish_rollback( $option_key, $state, $term_id ) {
+		$state['status'] = 'complete';
+		unset( $state['secret'], $state['post_ids'] );
+		update_option( $option_key, $state, false );
+
+		NRE_Migration_Context::stop();
+		$this->invalidate_status_cache( $term_id );
+	}
+
+	/**
+	 * Fire a non-blocking loopback request for the next rollback batch.
+	 *
+	 * @param int    $term_id The migration term ID.
+	 * @param string $secret  The auth secret.
+	 */
+	private function fire_rollback_loopback( $term_id, $secret ) {
+		wp_remote_post(
+			admin_url( 'admin-post.php' ),
+			[
+				'blocking'  => false,
+				'timeout'   => 0.01,
+				'sslverify' => false,
+				'body'      => [
+					'action'  => 'nre_rollback_batch',
+					'term_id' => $term_id,
+					'secret'  => $secret,
+				],
+			]
+		);
 	}
 
 	/**
@@ -480,95 +974,212 @@ class NRE_Migration_Dashboard {
 
 		$timestamp      = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
 		$migration_name = $term->name;
-		$date_display   = $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '';
 
-		// Get all posts assigned to this migration term.
-		$post_ids = get_posts(
-			[
-				'post_type'      => 'any',
-				'post_status'    => 'any',
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'tax_query'      => [
-					[
-						'taxonomy' => NRE_Migration_Context::TAXONOMY,
-						'terms'    => $term_id,
-					],
-				],
-			]
-		);
+		// CSV export.
+		$format = isset( $_GET['format'] ) ? sanitize_text_field( wp_unslash( $_GET['format'] ) ) : 'html';
 
-		$posts           = [];
+		if ( 'csv' === $format ) {
+			$this->export_csv( $term, $migration_name, $timestamp );
+			return;
+		}
+
+		$date_display = $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '';
+
+		// Use cached statuses for stats (fast, avoids N+1 revision walking).
+		$statuses        = $this->get_post_statuses( $term_id, $migration_name, $timestamp );
 		$posts_created   = 0;
 		$posts_updated   = 0;
 		$total_revisions = 0;
 
-		foreach ( $post_ids as $post_id ) {
-			$post_data = $this->get_post_migration_data( $post_id, $migration_name, $timestamp );
-
-			$posts[]          = $post_data;
-			$posts_created   += ( 'created' === $post_data['status'] ) ? 1 : 0;
-			$posts_updated   += ( 'updated' === $post_data['status'] ) ? 1 : 0;
-			$total_revisions += $post_data['revision_count'];
+		foreach ( $statuses as $info ) {
+			if ( 'created' === $info['status'] ) {
+				++$posts_created;
+			} else {
+				++$posts_updated;
+			}
+			$total_revisions += $info['revision_count'];
 		}
 
-		// Build diffs for updated posts.
-		require_once ABSPATH . 'wp-admin/includes/revision.php';
+		$total    = count( $statuses );
+		$post_ids = array_keys( $statuses );
 
-		$diffs_by_post = [];
-		foreach ( $posts as $post_data ) {
-			if ( ! $post_data['compare_to'] ) {
-				continue;
-			}
+		// Build lightweight post data via bulk query (title + type only).
+		$posts_data = $this->get_bulk_post_data( $post_ids, $statuses );
 
-			$diff = wp_get_revision_ui_diff(
-				get_post( $post_data['post_id'] ),
-				$post_data['compare_from'],
-				$post_data['compare_to']
-			);
-
-			if ( $diff ) {
-				$diffs_by_post[ $post_data['post_id'] ] = $diff;
-			}
-		}
-
-		$html = $this->build_export_html(
-			$migration_name,
-			$date_display,
-			$posts_created,
-			$posts_updated,
-			$total_revisions,
-			$posts,
-			$diffs_by_post
-		);
-
-		$filename = sanitize_file_name( 'migration-' . $term->slug . '-report.html' );
+		$report_data = [
+			'name'      => $migration_name,
+			'date'      => $date_display,
+			'generated' => wp_date( 'Y-m-d H:i:s T' ),
+			'stats'     => [
+				'total'     => $total,
+				'created'   => $posts_created,
+				'updated'   => $posts_updated,
+				'revisions' => $total_revisions,
+			],
+			'posts'     => $posts_data,
+			'term_id'   => $term_id,
+			'rest_url'  => rest_url( 'nre/v1' ),
+			'nonce'     => wp_create_nonce( 'wp_rest' ),
+		];
 
 		nocache_headers();
 		header( 'Content-Type: text/html; charset=utf-8' );
-		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
-		header( 'Content-Length: ' . strlen( $html ) );
-		echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Self-contained HTML report built with escaped values.
+
+		$this->render_report_html( $report_data );
 		exit;
 	}
 
 	/**
-	 * Build the self-contained HTML report.
+	 * Export migration posts as CSV.
 	 *
-	 * @param string $name            Migration name.
-	 * @param string $date            Migration date display string.
-	 * @param int    $created         Number of created posts.
-	 * @param int    $updated         Number of updated posts.
-	 * @param int    $total_revisions Total revision count.
-	 * @param array  $posts           Post data array.
-	 * @param array  $diffs_by_post   Diff arrays keyed by post ID.
-	 * @return string Complete HTML document.
+	 * Processes posts in batches and flushes output to avoid memory buildup.
+	 *
+	 * @param WP_Term $term            The migration term.
+	 * @param string  $migration_name  The migration name.
+	 * @param int     $timestamp       The migration timestamp.
 	 */
-	private function build_export_html( $name, $date, $created, $updated, $total_revisions, $posts, $diffs_by_post ) {
-		$total  = count( $posts );
-		$gen_ts = wp_date( 'Y-m-d H:i:s T' );
+	private function export_csv( $term, $migration_name, $timestamp ) {
+		$statuses = $this->get_post_statuses( $term->term_id, $migration_name, $timestamp );
+		$post_ids = array_keys( $statuses );
 
-		ob_start();
+		$filename = sanitize_file_name( 'migration-' . $term->slug . '-posts.csv' );
+
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+
+		$output = fopen( 'php://output', 'w' );
+		fputcsv( $output, [ 'Post ID', 'Title', 'Migration Status', 'Post Type', 'Post Status', 'Created', 'Revisions', 'Revision URL' ] );
+
+		// Use bulk queries in chunks to avoid per-post lookups.
+		global $wpdb;
+		$batch_size = 500;
+		$chunks     = array_chunk( $post_ids, $batch_size );
+
+		foreach ( $chunks as $chunk ) {
+			$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT ID, post_title, post_type, post_status, post_date FROM {$wpdb->posts} WHERE ID IN ($placeholders)",
+					$chunk
+				)
+			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+
+			$post_map = [];
+			foreach ( $rows as $row ) {
+				$post_map[ (int) $row->ID ] = $row;
+			}
+
+			foreach ( $chunk as $pid ) {
+				$post  = $post_map[ $pid ] ?? null;
+				$title = $post && $post->post_title ? $post->post_title : __( '(no title)', 'newspack-revisions-enhanced' );
+
+				fputcsv(
+					$output,
+					[
+						$pid,
+						$title,
+						$statuses[ $pid ]['status'],
+						$post ? $post->post_type : 'post',
+						$post ? $post->post_status : '',
+						$post ? $post->post_date : '',
+						$statuses[ $pid ]['revision_count'],
+						admin_url( "revision.php?post={$pid}" ),
+					]
+				);
+			}
+
+			if ( ob_get_level() ) {
+				ob_flush();
+			}
+			flush();
+		}
+
+		fclose( $output );
+		exit;
+	}
+
+	/**
+	 * Build lightweight post data via bulk SQL query.
+	 *
+	 * Returns compact arrays [ id, title, status, type, revision_count ] for all
+	 * post IDs, avoiding per-post get_post() calls.
+	 *
+	 * @param int[] $post_ids All post IDs.
+	 * @param array $statuses Cached statuses keyed by post ID.
+	 * @return array[] Array of [ id, title, status, type, revision_count ].
+	 */
+	private function get_bulk_post_data( $post_ids, $statuses ) {
+		if ( empty( $post_ids ) ) {
+			return [];
+		}
+
+		global $wpdb;
+
+		$posts_data = [];
+		$chunks     = array_chunk( $post_ids, 500 );
+
+		foreach ( $chunks as $chunk ) {
+			$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT ID, post_title, post_type FROM {$wpdb->posts} WHERE ID IN ($placeholders)",
+					$chunk
+				)
+			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+
+			$title_map = [];
+			$type_map  = [];
+			foreach ( $rows as $row ) {
+				$title_map[ (int) $row->ID ] = $row->post_title ? $row->post_title : __( '(no title)', 'newspack-revisions-enhanced' );
+				$type_map[ (int) $row->ID ]  = $row->post_type;
+			}
+
+			foreach ( $chunk as $pid ) {
+				$posts_data[] = [
+					$pid,
+					$title_map[ $pid ] ?? __( '(no title)', 'newspack-revisions-enhanced' ),
+					$statuses[ $pid ]['status'],
+					$type_map[ $pid ] ?? 'post',
+					$statuses[ $pid ]['revision_count'],
+				];
+			}
+		}
+
+		return $posts_data;
+	}
+
+	/**
+	 * Render self-contained HTML report with embedded JSON data.
+	 *
+	 * The report embeds all post data as a JSON blob and uses client-side JS
+	 * for pagination, search, and tab filtering. This avoids server-side
+	 * streaming of 100k+ table rows and produces a fast, interactive report.
+	 *
+	 * Print/PDF mode renders all rows into a hidden table on beforeprint.
+	 *
+	 * @param array $report_data Report data with keys: name, date, generated, stats, posts.
+	 */
+	private function render_report_html( $report_data ) {
+		$name     = $report_data['name'];
+		$date     = $report_data['date'];
+		$gen      = $report_data['generated'];
+		$stats    = $report_data['stats'];
+		$json     = wp_json_encode( $report_data['posts'] );
+		$term_id  = (int) $report_data['term_id'];
+		$rest_url = $report_data['rest_url'];
+		$nonce    = $report_data['nonce'];
+
+		$fmt_total  = number_format_i18n( $stats['total'] );
+		$fmt_create = number_format_i18n( $stats['created'] );
+		$fmt_update = number_format_i18n( $stats['updated'] );
+		$fmt_revs   = number_format_i18n( $stats['revisions'] );
+
+		// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- Self-contained HTML report built with escaped values.
 		?>
 <!DOCTYPE html>
 <html lang="en">
@@ -593,42 +1204,62 @@ a:hover{text-decoration:underline}
 .stat{background:#f7f7f7;border:1px solid #ddd;border-radius:6px;padding:.75rem 1.25rem;min-width:120px}
 .stat strong{display:block;font-size:1.4rem;color:#003da5}
 .stat span{font-size:.8rem;color:#6c6c6c;text-transform:uppercase;letter-spacing:.03em}
-.tabs{display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:0}
+.toolbar{display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap}
+.tabs{display:flex;gap:0;border-bottom:2px solid #ddd}
 .tab{padding:.6rem 1.25rem;font-size:.875rem;font-weight:600;color:#6c6c6c;cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color 125ms,border-color 125ms}
 .tab:hover{color:#1e1e1e}
 .tab.active{color:#003da5;border-bottom-color:#003da5}
 .tab .count{font-weight:400;color:#949494;margin-left:4px}
+.search{margin-left:auto;padding:.4rem .75rem;border:1px solid #ddd;border-radius:3px;font-size:.875rem;width:220px}
+.search:focus{outline:none;border-color:#003da5;box-shadow:0 0 0 1px #003da5}
 table{width:100%;border-collapse:collapse;font-size:.875rem}
 th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid #ddd}
 th{background:#f7f7f7;font-weight:600;color:#1e1e1e;border-bottom:2px solid #ddd}
 .badge{display:inline-block;padding:2px 8px;border-radius:2px;font-size:.75rem;font-weight:600;text-transform:uppercase}
 .badge-created{background:#e6f4ea;color:#1a7431}
 .badge-updated{background:#e8f0fe;color:#003da5}
-tr.row-toggle{cursor:pointer;transition:background 125ms ease-in-out}
-tr.row-toggle:hover td{background:#f7f7f7}
-tr.row-toggle td:first-child::before{content:"\25B6";display:inline-block;margin-right:.5rem;font-size:.65rem;transition:transform 125ms ease-in-out;color:#6c6c6c}
-tr.row-toggle.open td:first-child::before{transform:rotate(90deg)}
-tr.row-diff{display:none}
-tr.row-diff.open{display:table-row}
-tbody.filter-created tr[data-status="updated"],tbody.filter-updated tr[data-status="created"]{display:none!important}
-tr.row-diff>td{padding:0;border-bottom:2px solid #ddd;background:#fff}
+.pagination{display:flex;align-items:center;justify-content:center;gap:.75rem;margin-top:1rem;font-size:.875rem}
+.pagination button{padding:.35rem .75rem;border:1px solid #ddd;background:#fff;border-radius:3px;cursor:pointer;font-size:.8rem;color:#1e1e1e;transition:border-color 125ms}
+.pagination button:hover:not(:disabled){border-color:#003da5;color:#003da5}
+.pagination button:disabled{opacity:.4;cursor:default}
+.pagination .info{color:#6c6c6c}
+.btn-diff{padding:2px 10px;border:1px solid #ddd;background:#fff;border-radius:3px;font-size:.75rem;font-weight:600;color:#003da5;cursor:pointer;transition:border-color 125ms,background 125ms}
+.btn-diff:hover{border-color:#003da5;background:#f7f7f7}
+.btn-diff:disabled{opacity:.5;cursor:default}
+.btn-diff.is-loading{color:#949494}
+tr.diff-row{display:none}
+tr.diff-row.open{display:table-row}
+tr.diff-row>td{padding:0;border-bottom:2px solid #ddd;background:#fff}
 .diff-wrap{padding:.75rem 1rem}
 .diff-field{padding:.5rem 0;border-bottom:1px solid #f0f0f0}
 .diff-field:last-child{border-bottom:none}
 .diff-field-name{font-weight:600;margin-bottom:.4rem;color:#6c6c6c;font-size:.8rem;text-transform:uppercase}
 .diff-field table{margin:0;font-size:.8rem;width:100%;table-layout:fixed}
+.diff-field table col.left,.diff-field table col.right{width:50%!important}
+.diff-field table col.middle{display:none}
 .diff-field table td{width:50%}
+.diff-field table td.diff-indicator{display:none}
 .diff-field td{border:none;padding:.2rem .5rem;vertical-align:top;word-break:break-word}
 .diff-field .diff-deletedline{background-color:#fce4e4}
 .diff-field .diff-addedline{background-color:#e6f4ea}
 .diff-field del{background-color:#f8b4b4;text-decoration:none}
 .diff-field ins{background-color:#a7e3bb;text-decoration:none}
 .diff-field .diff-context{color:#6c6c6c}
+.diff-field .dashicons,.diff-field .screen-reader-text{display:none}
+.diff-field td.diff-addedline::before{content:"+";font-weight:700;color:#1a7431;margin-right:.4rem}
+.diff-field td.diff-deletedline::before{content:"\2212";font-weight:700;color:#a50000;margin-right:.4rem}
+.diff-error{padding:.75rem 1rem;color:#a50000;font-size:.85rem}
+.empty{text-align:center;padding:2rem;color:#6c6c6c}
 footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #ddd;font-size:.8rem;color:#949494;text-align:center}
-tr.row-diff[data-status="created"] .diff-field table col.left,tr.row-diff[data-status="created"] .diff-field table col.middle,tr.row-diff[data-status="created"] .diff-field table td:first-child,tr.row-diff[data-status="created"] .diff-field table td.diff-indicator,tr.row-diff[data-status="created"] .diff-field table th:first-child{display:none}
-tr.row-diff[data-status="created"] .diff-field table td:last-child{width:100%}
-tr.row-diff[data-status="created"] .diff-field table td .dashicons{display:none}
-@media print{.header{background:#003da5;-webkit-print-color-adjust:exact;print-color-adjust:exact}.pdf-btn{display:none}body{padding:0}.content{padding:.5rem}.stats{gap:.75rem}.stat{padding:.4rem .75rem}.tabs{display:none}tbody.filter-created tr[data-status],tbody.filter-updated tr[data-status]{display:table-row!important}tr.row-diff{display:table-row!important}}
+#print-table{display:none}
+@media print{
+	.header{background:#003da5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+	.pdf-btn,.search,.pagination,.tabs{display:none!important}
+	body{padding:0}.content{padding:.5rem}
+	.stats{gap:.75rem}.stat{padding:.4rem .75rem}
+	#main-table{display:none}
+	#print-table{display:table}
+}
 </style>
 </head>
 <body>
@@ -645,92 +1276,220 @@ tr.row-diff[data-status="created"] .diff-field table td .dashicons{display:none}
 <div class="meta">
 		<?php if ( $date ) : ?>
 		Migration date: <?php echo esc_html( $date ); ?> &middot;
-	<?php endif; ?>
-	Generated: <?php echo esc_html( $gen_ts ); ?>
+		<?php endif; ?>
+	Generated: <?php echo esc_html( $gen ); ?>
 </div>
 
 <div class="stats">
-	<div class="stat"><strong><?php echo esc_html( $total ); ?></strong><span>Total Posts</span></div>
-	<div class="stat"><strong><?php echo esc_html( $created ); ?></strong><span>Created</span></div>
-	<div class="stat"><strong><?php echo esc_html( $updated ); ?></strong><span>Updated</span></div>
-	<div class="stat"><strong><?php echo esc_html( $total_revisions ); ?></strong><span>Revisions</span></div>
+	<div class="stat"><strong><?php echo esc_html( $fmt_total ); ?></strong><span>Total Posts</span></div>
+	<div class="stat"><strong><?php echo esc_html( $fmt_create ); ?></strong><span>Created</span></div>
+	<div class="stat"><strong><?php echo esc_html( $fmt_update ); ?></strong><span>Updated</span></div>
+	<div class="stat"><strong><?php echo esc_html( $fmt_revs ); ?></strong><span>Revisions</span></div>
 </div>
 
-<div class="tabs">
-	<button class="tab active" data-filter="all">All <span class="count"><?php echo esc_html( $total ); ?></span></button>
-	<button class="tab" data-filter="created">Created <span class="count"><?php echo esc_html( $created ); ?></span></button>
-	<button class="tab" data-filter="updated">Updated <span class="count"><?php echo esc_html( $updated ); ?></span></button>
+<div class="toolbar">
+	<div class="tabs">
+		<button class="tab active" data-filter="all">All <span class="count"><?php echo esc_html( $fmt_total ); ?></span></button>
+		<button class="tab" data-filter="created">Created <span class="count"><?php echo esc_html( $fmt_create ); ?></span></button>
+		<button class="tab" data-filter="updated">Updated <span class="count"><?php echo esc_html( $fmt_update ); ?></span></button>
+	</div>
+	<input type="text" class="search" id="search" placeholder="Search posts..." />
 </div>
-<table>
+
+<table id="main-table">
+<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Type</th><th>Revisions</th><th>Actions</th></tr></thead>
+<tbody id="tbody"></tbody>
+</table>
+<div class="pagination" id="pagination"></div>
+
+<table id="print-table">
 <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Type</th><th>Revisions</th></tr></thead>
-<tbody>
-		<?php
-		foreach ( $posts as $p ) :
-			$has_diff = isset( $diffs_by_post[ $p['post_id'] ] );
-			$view_url = get_permalink( $p['post_id'] );
-			?>
-<tr class="<?php echo $has_diff ? 'row-toggle' : ''; ?>" data-status="<?php echo esc_html( $p['status'] ); ?>" <?php echo $has_diff ? 'data-diff="diff-' . esc_html( $p['post_id'] ) . '"' : ''; ?>>
-	<td><?php echo esc_html( $p['post_id'] ); ?></td>
-	<td>
-			<?php
-			if ( $view_url ) :
-				?>
-		<a href="<?php echo esc_url( $view_url ); ?>" target="_blank"><?php echo esc_html( $p['title'] ); ?></a>
-				<?php
-else :
-	?>
-		<?php echo esc_html( $p['title'] ); ?><?php endif; ?></td>
-	<td><span class="badge badge-<?php echo esc_html( $p['status'] ); ?>"><?php echo esc_html( $p['status'] ); ?></span></td>
-	<td><?php echo esc_html( $p['post_type'] ); ?></td>
-	<td><?php echo esc_html( $p['revision_count'] ); ?></td>
-</tr>
-			<?php if ( $has_diff ) : ?>
-<tr class="row-diff" data-status="<?php echo esc_html( $p['status'] ); ?>" id="diff-<?php echo esc_html( $p['post_id'] ); ?>">
-	<td colspan="5">
-		<div class="diff-wrap">
-				<?php foreach ( $diffs_by_post[ $p['post_id'] ] as $field ) : ?>
-			<div class="diff-field">
-				<div class="diff-field-name"><?php echo esc_html( $field['name'] ); ?></div>
-				<div><?php echo $field['diff']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- HTML from wp_get_revision_ui_diff(). ?></div>
-			</div>
-		<?php endforeach; ?>
-		</div>
-	</td>
-</tr>
-<?php endif; ?>
-<?php endforeach; ?>
-</tbody>
+<tbody id="print-tbody"></tbody>
 </table>
 </div>
 
 <footer>Generated by Newspack Revisions Enhanced</footer>
 <script>
 (function(){
-	// Accordion toggles.
-	document.querySelectorAll('.row-toggle').forEach(function(row){
-		row.addEventListener('click',function(){
-			var id=this.getAttribute('data-diff');
-			var diff=document.getElementById(id);
-			if(diff){this.classList.toggle('open');diff.classList.toggle('open')}
+	var PER_PAGE=100;
+	var posts=<?php echo $json; ?>;
+	var termId=<?php echo (int) $term_id; ?>;
+	var restUrl=<?php echo wp_json_encode( $rest_url ); ?>;
+	var nonce=<?php echo wp_json_encode( $nonce ); ?>;
+	var filtered=posts;
+	var page=1;
+	var tab='all';
+	var query='';
+	var debounceTimer;
+	var diffCache={};
+
+	function filterPosts(){
+		filtered=posts.filter(function(p){
+			if(tab!=='all'&&p[2]!==tab)return false;
+			if(query){
+				var q=query.toLowerCase();
+				return String(p[0]).indexOf(q)!==-1||p[1].toLowerCase().indexOf(q)!==-1;
+			}
+			return true;
 		});
+	}
+
+	function renderRow(p){
+		return '<tr data-post-id="'+esc(p[0])+'"><td>'+esc(p[0])+'</td><td>'+esc(p[1])+'</td><td><span class="badge badge-'+esc(p[2])+'">'+esc(p[2])+'</span></td><td>'+esc(p[3])+'</td><td>'+esc(p[4])+'</td><td><button class="btn-diff" data-post-id="'+esc(p[0])+'">View Changes</button></td></tr>'
+			+'<tr class="diff-row" id="diff-'+esc(p[0])+'"><td colspan="6"></td></tr>';
+	}
+
+	function renderPrintRow(p){
+		return '<tr><td>'+esc(p[0])+'</td><td>'+esc(p[1])+'</td><td><span class="badge badge-'+esc(p[2])+'">'+esc(p[2])+'</span></td><td>'+esc(p[3])+'</td><td>'+esc(p[4])+'</td></tr>';
+	}
+
+	function render(){
+		filterPosts();
+		var totalPages=Math.max(1,Math.ceil(filtered.length/PER_PAGE));
+		if(page>totalPages)page=totalPages;
+		var start=(page-1)*PER_PAGE;
+		var slice=filtered.slice(start,start+PER_PAGE);
+
+		var html='';
+		for(var i=0;i<slice.length;i++){html+=renderRow(slice[i])}
+		if(!slice.length)html='<tr><td colspan="6" class="empty">No posts match your search.</td></tr>';
+
+		document.getElementById('tbody').innerHTML=html;
+
+		var pag=document.getElementById('pagination');
+		if(totalPages>1){
+			var fmt=filtered.length.toLocaleString();
+			pag.innerHTML='<button id="prev">&lsaquo; Previous</button><span class="info">Page '+page+' of '+totalPages+' ('+fmt+' posts)</span><button id="next">Next &rsaquo;</button>';
+			var prev=document.getElementById('prev');
+			var next=document.getElementById('next');
+			if(page<=1)prev.disabled=true;
+			if(page>=totalPages)next.disabled=true;
+			prev.onclick=function(){if(page>1){page--;render()}};
+			next.onclick=function(){if(page<totalPages){page++;render()}};
+		}else{
+			pag.innerHTML='';
+		}
+	}
+
+	function esc(v){
+		var d=document.createElement('div');
+		d.appendChild(document.createTextNode(String(v)));
+		return d.innerHTML;
+	}
+
+	function renderDiffHtml(fields){
+		var html='<div class="diff-wrap">';
+		for(var i=0;i<fields.length;i++){
+			html+='<div class="diff-field"><div class="diff-field-name">'+esc(fields[i].name)+'</div><div>'+fields[i].diff+'</div></div>';
+		}
+		html+='</div>';
+		return html;
+	}
+
+	function fetchDiff(postId,btn){
+		// Toggle off if already open.
+		var diffRow=document.getElementById('diff-'+postId);
+		if(diffRow&&diffRow.classList.contains('open')){
+			diffRow.classList.remove('open');
+			btn.textContent='View Changes';
+			return;
+		}
+
+		// Use cache if available.
+		if(diffCache[postId]){
+			showDiff(postId,diffCache[postId],btn);
+			return;
+		}
+
+		btn.disabled=true;
+		btn.classList.add('is-loading');
+		btn.textContent='Loading...';
+
+		var url=restUrl+'/migrations/'+termId+'/diff/'+postId;
+		fetch(url,{credentials:'same-origin',headers:{'X-WP-Nonce':nonce}})
+			.then(function(r){
+				if(!r.ok)throw new Error(r.status);
+				return r.json();
+			})
+			.then(function(data){
+				diffCache[postId]=data;
+				showDiff(postId,data,btn);
+			})
+			.catch(function(){
+				var diffRow=document.getElementById('diff-'+postId);
+				if(diffRow){
+					diffRow.querySelector('td').innerHTML='<div class="diff-error">Could not load diff. Make sure you are logged in.</div>';
+					diffRow.classList.add('open');
+				}
+				btn.disabled=false;
+				btn.classList.remove('is-loading');
+				btn.textContent='View Changes';
+			});
+	}
+
+	function showDiff(postId,data,btn){
+		var diffRow=document.getElementById('diff-'+postId);
+		if(!diffRow)return;
+		// The REST endpoint returns an array of {id,name,diff} directly, or {message:...} on error.
+		var fields=Array.isArray(data)?data:(data.fields||[]);
+		if(fields.length){
+			diffRow.querySelector('td').innerHTML=renderDiffHtml(fields);
+		}else{
+			diffRow.querySelector('td').innerHTML='<div class="diff-wrap" style="color:#6c6c6c">'+(data.message||'No changes detected.')+'</div>';
+		}
+		diffRow.classList.add('open');
+		btn.disabled=false;
+		btn.classList.remove('is-loading');
+		btn.textContent='Hide Changes';
+	}
+
+	// Delegate click on diff buttons.
+	document.getElementById('tbody').addEventListener('click',function(e){
+		var btn=e.target.closest('.btn-diff');
+		if(!btn)return;
+		var postId=btn.getAttribute('data-post-id');
+		fetchDiff(postId,btn);
 	});
-	// Tab filtering — toggle a class on tbody so CSS handles visibility.
-	var tbody=document.querySelector('tbody');
-	var tabs=document.querySelectorAll('.tab');
-	tabs.forEach(function(tab){
-		tab.addEventListener('click',function(){
-			tabs.forEach(function(t){t.classList.remove('active')});
+
+	// Tab clicks.
+	document.querySelectorAll('.tab').forEach(function(t){
+		t.addEventListener('click',function(){
+			document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('active')});
 			this.classList.add('active');
-			var filter=this.getAttribute('data-filter');
-			tbody.className=filter==='all'?'':'filter-'+filter;
+			tab=this.getAttribute('data-filter');
+			page=1;
+			render();
 		});
 	});
+
+	// Search.
+	document.getElementById('search').addEventListener('input',function(){
+		var val=this.value;
+		clearTimeout(debounceTimer);
+		debounceTimer=setTimeout(function(){
+			query=val;
+			page=1;
+			render();
+		},200);
+	});
+
+	// Print: build full table on beforeprint.
+	var printBuilt=false;
+	window.addEventListener('beforeprint',function(){
+		if(printBuilt)return;
+		printBuilt=true;
+		var html='';
+		for(var i=0;i<posts.length;i++){html+=renderPrintRow(posts[i])}
+		document.getElementById('print-tbody').innerHTML=html;
+	});
+
+	render();
 })();
 </script>
 </body>
 </html>
 		<?php
-		return ob_get_clean();
+		// phpcs:enable WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
 
 	/**
