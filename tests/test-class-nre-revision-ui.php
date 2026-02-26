@@ -161,15 +161,8 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 		$rev_from = $data['revisions'][0];
 		$rev_to   = $data['revisions'][1];
 
-		register_post_meta(
-			'post',
-			'test_meta_key',
-			[
-				'show_in_rest' => true,
-				'single'       => true,
-				'type'         => 'string',
-			]
-		);
+		// Add the meta key to the parent post so discover_meta_keys() finds it.
+		update_post_meta( $data['post_id'], 'test_meta_key', 'value' );
 
 		// Remove all existing wp_post_revision_meta_keys filters so only our instance runs.
 		remove_all_filters( 'wp_post_revision_meta_keys' );
@@ -189,7 +182,6 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 		$this->assertTrue( $found );
 
 		// Clean up.
-		unregister_meta_key( 'post', 'test_meta_key' );
 		remove_filter( 'wp_post_revision_meta_keys', [ $this->meta_revisions, 'filter_revision_meta_keys' ], 10 );
 	}
 
@@ -222,15 +214,8 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 		$rev_from = $data['revisions'][0];
 		$rev_to   = $data['revisions'][1];
 
-		register_post_meta(
-			'post',
-			'test_identical_meta',
-			[
-				'show_in_rest' => true,
-				'single'       => true,
-				'type'         => 'string',
-			]
-		);
+		// Add the meta key to the parent post so discover_meta_keys() finds it.
+		update_post_meta( $data['post_id'], 'test_identical_meta', 'same value' );
 
 		$this->meta_revisions->register_hooks();
 
@@ -247,7 +232,6 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 		}
 		$this->assertFalse( $found );
 
-		unregister_meta_key( 'post', 'test_identical_meta' );
 		remove_filter( 'wp_post_revision_meta_keys', [ $this->meta_revisions, 'filter_revision_meta_keys' ], 10 );
 	}
 

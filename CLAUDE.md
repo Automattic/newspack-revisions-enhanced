@@ -7,7 +7,7 @@ WordPress plugin that adds revision tracking for post meta, taxonomy terms, and 
 ```
 newspack-revisions-enhanced.php    # Main plugin file, bootstraps all classes
 includes/
-  class-nre-meta-revisions.php     # Tracks post meta in revisions (auto-detects REST-registered meta)
+  class-nre-meta-revisions.php     # Tracks post meta in revisions (discovers all meta keys from DB)
   class-nre-taxonomy-revisions.php # Tracks taxonomy term assignments in revisions
   class-nre-post-type-revisions.php # Tracks post type changes in revisions
   class-nre-revision-ui.php        # Adds meta/taxonomy/post-type diff rows to WP revisions screen
@@ -82,7 +82,7 @@ The plugin hooks into WordPress's existing revision system:
 - `wp_save_post_revision_post_has_changed` filter — forces revision creation when meta/taxonomy/type changed
 - `wp_get_revision_ui_diff` filter — adds diff rows for meta, taxonomies, post type, and featured image
 
-Meta keys are auto-detected from `register_post_meta()` with `show_in_rest` enabled. Override with the `nre_revision_meta_keys` filter.
+Meta keys are auto-discovered from the database (all distinct meta keys for the post type, minus excluded noise prefixes). Override with the `nre_revision_meta_keys` filter.
 
 ### Migration Context
 
