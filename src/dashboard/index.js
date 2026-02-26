@@ -208,6 +208,7 @@ function App() {
 				} );
 				setNotice( { type: 'success', message: result.message } );
 				refreshDetail();
+				fetchMigrations();
 			} catch ( err ) {
 				setNotice( {
 					type: 'error',
@@ -221,7 +222,7 @@ function App() {
 				} );
 			}
 		},
-		[ selectedId, refreshDetail ]
+		[ selectedId, refreshDetail, fetchMigrations ]
 	);
 
 	const handleBulkRollback = useCallback( async () => {

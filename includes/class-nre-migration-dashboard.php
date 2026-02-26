@@ -688,9 +688,14 @@ class NRE_Migration_Dashboard {
 			return new WP_REST_Response( [ 'message' => 'Migration not found.' ], 404 );
 		}
 
-		$timestamp = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
+		$timestamp      = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
+		$migration_name = $term->name;
 
-		$result = $this->rollback->rollback_post( $post_id, $term->name, $timestamp );
+		NRE_Migration_Context::start( 'Rollback: ' . $migration_name );
+
+		$result = $this->rollback->rollback_post( $post_id, $migration_name, $timestamp );
+
+		NRE_Migration_Context::stop();
 
 		if ( is_wp_error( $result ) ) {
 			return new WP_REST_Response( [ 'message' => $result->get_error_message() ], 400 );
