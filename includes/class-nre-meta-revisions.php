@@ -29,11 +29,43 @@ class NRE_Meta_Revisions {
 	const INTERNAL_KEYS = [ '_thumbnail_id' ];
 
 	/**
-	 * Add show_in_rest meta keys to revision tracking.
+	 * Meta key prefixes to exclude from "track all" mode.
 	 *
-	 * Keys that already have revisions_enabled => true are handled by core,
-	 * so we skip those to avoid duplicates. Internal keys like _thumbnail_id
-	 * are always included.
+	 * These are internal/system keys that produce noise in diffs.
+	 *
+	 * @var string[]
+	 */
+	const EXCLUDED_PREFIXES = [
+		'_edit_',
+		'_oembed_',
+		'_encloseme',
+		'_pingme',
+		'_wp_old_',
+		'_wp_trash_',
+		'_wp_attached_',
+		'_wp_attachment_',
+		'_wp_page_template',
+		'_menu_item_',
+	];
+
+	/**
+	 * Exact meta keys to exclude from "track all" mode.
+	 *
+	 * @var string[]
+	 */
+	const EXCLUDED_KEYS = [
+		'_edit_lock',
+		'_edit_last',
+		'_wp_old_slug',
+		'_wp_old_date',
+	];
+
+	/**
+	 * Add meta keys to revision tracking.
+	 *
+	 * By default, discovers all meta keys in use for the post type and
+	 * tracks them, minus known internal/noise keys. This ensures migration
+	 * scripts that write to arbitrary meta keys are fully captured.
 	 *
 	 * @param string[] $keys      Meta keys already registered for revision tracking.
 	 * @param string   $post_type Post type being revised.
@@ -48,7 +80,11 @@ class NRE_Meta_Revisions {
 		}
 
 		/**
-		 * Filter whether to auto-detect REST meta keys for revision tracking.
+		 * Filter whether to auto-detect meta keys for revision tracking.
+		 *
+		 * When true (default), NRE discovers all meta keys in use for the
+		 * post type and tracks them. Set to false to only track keys
+		 * explicitly added via the nre_revision_meta_keys filter.
 		 *
 		 * @param bool   $auto_detect Whether to auto-detect. Default true.
 		 * @param string $post_type   The post type.
@@ -56,19 +92,9 @@ class NRE_Meta_Revisions {
 		$auto_detect = apply_filters( 'nre_auto_detect_rest_meta', true, $post_type );
 
 		if ( $auto_detect ) {
-			$registered = get_registered_meta_keys( 'post', $post_type );
-
-			foreach ( $registered as $meta_key => $args ) {
-				// Only add keys that have show_in_rest but don't already have revisions_enabled.
-				if ( ! empty( $args['show_in_rest'] ) && empty( $args['revisions_enabled'] ) && ! in_array( $meta_key, $keys, true ) ) {
-					$keys[] = $meta_key;
-				}
-			}
-
-			// Also check meta registered for all object types (empty subtype).
-			$global_registered = get_registered_meta_keys( 'post' );
-			foreach ( $global_registered as $meta_key => $args ) {
-				if ( ! empty( $args['show_in_rest'] ) && empty( $args['revisions_enabled'] ) && ! in_array( $meta_key, $keys, true ) ) {
+			$discovered = $this->discover_meta_keys( $post_type );
+			foreach ( $discovered as $meta_key ) {
+				if ( ! in_array( $meta_key, $keys, true ) ) {
 					$keys[] = $meta_key;
 				}
 			}
@@ -84,44 +110,67 @@ class NRE_Meta_Revisions {
 	}
 
 	/**
-	 * Built-in labels for well-known WordPress meta keys.
+	 * Discover all meta keys in use for a post type, minus excluded noise.
 	 *
-	 * @var array<string, string>
+	 * Queries distinct meta_key values from postmeta for posts of the
+	 * given type, then filters out known internal/system prefixes.
+	 *
+	 * @param string $post_type The post type.
+	 * @return string[] Meta keys to track.
 	 */
-	const INTERNAL_LABELS = [
-		'_thumbnail_id' => 'Featured Image',
-	];
+	private function discover_meta_keys( $post_type ) {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$meta_keys = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT pm.meta_key
+				FROM {$wpdb->postmeta} pm
+				INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+				WHERE p.post_type = %s
+				AND p.post_status NOT IN ('auto-draft', 'trash')
+				LIMIT 200",
+				$post_type
+			)
+		);
+
+		if ( empty( $meta_keys ) ) {
+			return [];
+		}
+
+		return array_values( array_filter( $meta_keys, [ $this, 'is_trackable_key' ] ) );
+	}
+
+	/**
+	 * Check whether a meta key should be tracked.
+	 *
+	 * @param string $meta_key The meta key.
+	 * @return bool True if trackable, false if excluded.
+	 */
+	private function is_trackable_key( $meta_key ) {
+		if ( in_array( $meta_key, self::EXCLUDED_KEYS, true ) ) {
+			return false;
+		}
+
+		foreach ( self::EXCLUDED_PREFIXES as $prefix ) {
+			if ( 0 === strpos( $meta_key, $prefix ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
 
 	/**
 	 * Get label for a meta key in the revision diff UI.
 	 *
-	 * Built-in WP keys use a human-readable label. Keys registered via
-	 * register_meta() with a label use that. Everything else shows the
-	 * raw meta key so custom keys are immediately identifiable.
+	 * Returns the raw meta key. Use the nre_meta_label filter to override.
 	 *
 	 * @param string $meta_key  The meta key.
 	 * @param string $post_type The post type.
 	 * @return string Label for display.
 	 */
 	public function get_meta_label( $meta_key, $post_type = 'post' ) {
-		// Check built-in labels for well-known WP keys.
-		if ( isset( self::INTERNAL_LABELS[ $meta_key ] ) ) {
-			return apply_filters( 'nre_meta_label', self::INTERNAL_LABELS[ $meta_key ], $meta_key, $post_type );
-		}
-
-		// Try to get the label from registered meta args.
-		$registered = get_registered_meta_keys( 'post', $post_type );
-		if ( isset( $registered[ $meta_key ]['label'] ) && '' !== $registered[ $meta_key ]['label'] ) {
-			return apply_filters( 'nre_meta_label', $registered[ $meta_key ]['label'], $meta_key, $post_type );
-		}
-
-		// Fallback: check globally registered meta.
-		$global_registered = get_registered_meta_keys( 'post' );
-		if ( isset( $global_registered[ $meta_key ]['label'] ) && '' !== $global_registered[ $meta_key ]['label'] ) {
-			return apply_filters( 'nre_meta_label', $global_registered[ $meta_key ]['label'], $meta_key, $post_type );
-		}
-
-		// Fallback: raw meta key — no prettification.
 		return apply_filters( 'nre_meta_label', $meta_key, $meta_key, $post_type );
 	}
 

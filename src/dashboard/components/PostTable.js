@@ -171,6 +171,17 @@ export default function PostTable( {
 									<td>{ post.revision_count }</td>
 									<td>
 										<div className="nre-dashboard__actions">
+											{ post.view_url && (
+												<Button
+													variant="secondary"
+													size="compact"
+													href={ post.view_url }
+													target="_blank"
+													rel="noreferrer"
+												>
+													View
+												</Button>
+											) }
 											{ post.revision_url && (
 												<Button
 													variant="secondary"

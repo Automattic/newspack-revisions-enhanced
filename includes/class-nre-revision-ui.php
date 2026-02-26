@@ -95,7 +95,7 @@ class NRE_Revision_UI {
 			$return,
 			[
 				'id'   => 'featured-image',
-				'name' => __( 'Featured Image', 'newspack-revisions-enhanced' ),
+				'name' => '_thumbnail_id',
 				'diff' => $diff,
 			]
 		);

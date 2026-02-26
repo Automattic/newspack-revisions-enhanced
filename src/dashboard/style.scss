@@ -317,7 +317,7 @@ body.nre-dashboard-page {
 	// Actions column — fixed width, always far right.
 	th:last-child,
 	td:last-child {
-		width: 280px;
+		width: 340px;
 		text-align: right;
 	}
 
@@ -528,9 +528,11 @@ body.nre-dashboard-page {
 
 // ─── Diff modal ─────────────────────────────────────────────────────────
 
-.nre-dashboard__diff-modal {
+.nre-dashboard__diff-modal.components-modal__frame {
+	height: calc(100vh - 64px);
+	max-height: calc(100vh - 64px);
+
 	.components-modal__content {
-		max-height: 80vh;
 		overflow-y: auto;
 	}
 }

@@ -652,7 +652,7 @@ class NRE_Migration_Dashboard {
 		$can_rollback = ( 'updated' === $status );
 
 		$compare_from = $pre_migration_rev_id ?? 0;
-		$compare_to   = $migration_revisions[0] ?? null;
+		$compare_to   = ! empty( $migration_revisions ) ? end( $migration_revisions ) : null;
 
 		return [
 			'post_id'        => $post_id,
@@ -660,6 +660,7 @@ class NRE_Migration_Dashboard {
 			'post_type'      => $post->post_type,
 			'post_status'    => $post->post_status,
 			'edit_url'       => get_edit_post_link( $post_id, 'raw' ),
+			'view_url'       => get_permalink( $post_id ),
 			'status'         => $status,
 			'can_rollback'   => $can_rollback,
 			'revision_count' => count( $migration_revisions ),
@@ -1525,7 +1526,7 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #ddd;font-size:.8re
 			}
 		}
 
-		// Find compare_to (first migration revision).
+		// Find compare_to (last migration revision — captures all changes in this migration).
 		$revisions  = wp_get_post_revisions(
 			$post_id,
 			[
@@ -1539,7 +1540,6 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #ddd;font-size:.8re
 			$rev_ts   = (int) get_post_meta( $rev->ID, '_nre_migration_ts', true );
 			if ( $rev_name === $migration_name && $rev_ts === $timestamp ) {
 				$compare_to = $rev->ID;
-				break;
 			}
 		}
 
