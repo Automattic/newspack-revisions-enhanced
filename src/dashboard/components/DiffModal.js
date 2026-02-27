@@ -47,10 +47,14 @@ export default function DiffModal( {
 			onRequestClose={ onClose }
 			className="nre-dashboard__diff-modal"
 		>
-			<div className="nre-dashboard__diff-tabs">
+			<div className="nre-dashboard__diff-tabs" role="tablist">
 				{ TABS.map( ( tab ) => (
 					<button
 						key={ tab.value }
+						role="tab"
+						aria-selected={ activeTab === tab.value }
+						aria-controls={ `nre-tabpanel-${ tab.value }` }
+						id={ `nre-tab-${ tab.value }` }
 						className={ `nre-dashboard__diff-tab${
 							activeTab === tab.value ? ' is-active' : ''
 						}` }
@@ -62,7 +66,11 @@ export default function DiffModal( {
 			</div>
 
 			{ activeTab === 'field-diff' && (
-				<>
+				<div
+					role="tabpanel"
+					id="nre-tabpanel-field-diff"
+					aria-labelledby="nre-tab-field-diff"
+				>
 					{ loading && (
 						<div className="nre-dashboard__loading">
 							<Spinner />
@@ -99,16 +107,22 @@ export default function DiffModal( {
 								/>
 							</div>
 						) ) }
-				</>
+				</div>
 			) }
 
 			{ activeTab === 'visual-preview' && (
-				<VisualPreview
-					compareFrom={ compareFrom }
-					compareTo={ compareTo }
-					viewUrl={ viewUrl }
-					postStatus={ postStatus }
-				/>
+				<div
+					role="tabpanel"
+					id="nre-tabpanel-visual-preview"
+					aria-labelledby="nre-tab-visual-preview"
+				>
+					<VisualPreview
+						compareFrom={ compareFrom }
+						compareTo={ compareTo }
+						viewUrl={ viewUrl }
+						postStatus={ postStatus }
+					/>
+				</div>
 			) }
 		</Modal>
 	);

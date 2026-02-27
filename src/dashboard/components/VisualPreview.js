@@ -105,25 +105,28 @@ function generateDiffMap( canvasA, canvasB ) {
 	const pixA = dataA.data;
 	const pixB = dataB.data;
 
-	// Build a boolean grid at block resolution marking changed blocks.
+	// Build a boolean grid at block resolution by sampling the center pixel
+	// of each block, instead of scanning every pixel (much faster on long pages).
 	const cols = Math.ceil( w / BLOCK_SIZE );
 	const rows = Math.ceil( h / BLOCK_SIZE );
 	const changed = new Uint8Array( cols * rows );
+	const halfBlock = Math.floor( BLOCK_SIZE / 2 );
 
-	for ( let i = 0; i < pixA.length; i += 4 ) {
-		const dr = Math.abs( pixA[ i ] - pixB[ i ] );
-		const dg = Math.abs( pixA[ i + 1 ] - pixB[ i + 1 ] );
-		const db = Math.abs( pixA[ i + 2 ] - pixB[ i + 2 ] );
-		if (
-			dr > DIFF_THRESHOLD ||
-			dg > DIFF_THRESHOLD ||
-			db > DIFF_THRESHOLD
-		) {
-			const px = ( i / 4 ) % w;
-			const py = Math.floor( i / 4 / w );
-			const bx = Math.floor( px / BLOCK_SIZE );
-			const by = Math.floor( py / BLOCK_SIZE );
-			changed[ by * cols + bx ] = 1;
+	for ( let by = 0; by < rows; by++ ) {
+		const sy = Math.min( by * BLOCK_SIZE + halfBlock, h - 1 );
+		for ( let bx = 0; bx < cols; bx++ ) {
+			const sx = Math.min( bx * BLOCK_SIZE + halfBlock, w - 1 );
+			const i = ( sy * w + sx ) * 4;
+			const dr = Math.abs( pixA[ i ] - pixB[ i ] );
+			const dg = Math.abs( pixA[ i + 1 ] - pixB[ i + 1 ] );
+			const db = Math.abs( pixA[ i + 2 ] - pixB[ i + 2 ] );
+			if (
+				dr > DIFF_THRESHOLD ||
+				dg > DIFF_THRESHOLD ||
+				db > DIFF_THRESHOLD
+			) {
+				changed[ by * cols + bx ] = 1;
+			}
 		}
 	}
 

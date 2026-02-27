@@ -977,13 +977,14 @@ class NRE_Migration_Dashboard {
 			return;
 		}
 
-		if ( ! current_user_can( 'edit_posts' ) ) {
-			wp_die( esc_html__( 'You do not have permission to preview revisions.', 'newspack-revisions-enhanced' ), 403 );
-		}
-
 		check_admin_referer( 'nre_revision_preview' );
 
 		$revision_id = (int) $_GET['nre_preview_revision'];
+		$parent_id   = get_queried_object_id();
+
+		if ( ! current_user_can( 'edit_post', $parent_id ) ) {
+			wp_die( esc_html__( 'You do not have permission to preview revisions.', 'newspack-revisions-enhanced' ), 403 );
+		}
 
 		// Prevent caching, search-engine indexing, and admin bar.
 		nocache_headers();
@@ -1023,6 +1024,11 @@ class NRE_Migration_Dashboard {
 		$revision = get_post( $revision_id );
 		if ( ! $revision || 'revision' !== $revision->post_type ) {
 			wp_die( esc_html__( 'Revision not found.', 'newspack-revisions-enhanced' ), 404 );
+		}
+
+		// Verify the revision belongs to the queried post.
+		if ( (int) $revision->post_parent !== $parent_id ) {
+			wp_die( esc_html__( 'Revision does not belong to this post.', 'newspack-revisions-enhanced' ), 403 );
 		}
 
 		// Swap the main query post's fields with the revision's data.
