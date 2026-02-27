@@ -529,12 +529,214 @@ body.nre-dashboard-page {
 // ─── Diff modal ─────────────────────────────────────────────────────────
 
 .nre-dashboard__diff-modal.components-modal__frame {
+	width: calc(100vw - 64px);
 	height: calc(100vh - 64px);
 	max-height: calc(100vh - 64px);
 
 	.components-modal__content {
 		overflow-y: auto;
 	}
+}
+
+// ─── Diff modal tabs ────────────────────────────────────────────────────────
+
+.nre-dashboard__diff-tabs {
+	display: flex;
+	gap: 0;
+	border-bottom: 2px solid $border;
+	margin-bottom: 16px;
+}
+
+.nre-dashboard__diff-tab {
+	padding: 8px 16px;
+	font-size: 13px;
+	font-weight: 600;
+	color: $text-secondary;
+	background: none;
+	border: none;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -2px;
+	cursor: pointer;
+	transition: color $transition, border-color $transition;
+
+	&:hover {
+		color: $text-primary;
+	}
+
+	&.is-active {
+		color: $accent;
+		border-bottom-color: $accent;
+	}
+}
+
+// ─── Visual preview ─────────────────────────────────────────────────────────
+
+.nre-visual-preview {
+	position: relative;
+}
+
+.nre-visual-preview__controls {
+	display: flex;
+	align-items: center;
+	gap: 24px;
+	margin-bottom: 16px;
+
+	.components-toggle-control {
+		margin-bottom: 0;
+	}
+
+	.components-range-control {
+		min-width: 200px;
+	}
+}
+
+.nre-visual-preview__note {
+	color: $text-secondary;
+	font-size: 14px;
+	margin: 0 0 12px;
+}
+
+.nre-visual-preview__side-by-side {
+	display: flex;
+	gap: 16px;
+}
+
+.nre-visual-preview__pane {
+	flex: 1;
+	min-width: 0;
+}
+
+.nre-visual-preview__single {
+	max-width: 50%;
+}
+
+.nre-visual-preview__label {
+	font-size: 12px;
+	font-weight: 600;
+	color: $text-secondary;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 6px;
+}
+
+.nre-visual-preview__iframe {
+	width: 100%;
+	height: calc(100vh - 280px);
+	border: 1px solid $border;
+	border-radius: $radius-panel;
+	background: #fff;
+}
+
+.nre-visual-preview__overlay {
+	position: relative;
+	height: calc(100vh - 280px);
+
+	.nre-visual-preview__iframe {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.nre-visual-preview__iframe--overlay {
+		z-index: 1;
+	}
+}
+
+.nre-visual-preview__overlay-label {
+	position: absolute;
+	top: 8px;
+	z-index: 2;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 2px 8px;
+	border-radius: $radius-badge;
+	background: rgba(#fff, 0.85);
+	color: $text-secondary;
+
+	&--before {
+		left: 8px;
+	}
+
+	&--after {
+		right: 8px;
+	}
+}
+
+// ─── Diff map ───────────────────────────────────────────────────────────────
+
+// Hidden iframes used only for html2canvas capture.
+// Width and height are set dynamically by JS to match the display container.
+.nre-visual-preview__capture-iframes {
+	position: absolute;
+	left: -9999px;
+	top: 0;
+	overflow: hidden;
+	pointer-events: none;
+
+	iframe {
+		width: 780px; // Default; JS overrides to match container.
+		height: 600px; // Default; JS expands to full document height.
+		border: none;
+	}
+}
+
+.nre-visual-preview__diff-map-loading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	justify-content: center;
+	padding: 48px;
+	color: $text-secondary;
+	font-size: 14px;
+}
+
+.nre-visual-preview__diff-map-error {
+	color: #cc1818;
+	font-size: 14px;
+	text-align: center;
+	padding: 24px;
+}
+
+.nre-visual-preview__diff-map {
+	border: 1px solid $border;
+	border-radius: $radius-panel;
+	overflow-y: auto;
+	overflow-x: hidden;
+	height: calc(100vh - 280px);
+	background: #fff;
+}
+
+.nre-visual-preview__diff-map-legend {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	font-size: 12px;
+	color: $text-secondary;
+	border-bottom: 1px solid $border-light;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: #fff;
+}
+
+.nre-visual-preview__diff-map-legend-swatch {
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	border-radius: 2px;
+	background: rgba(228, 55, 65, 0.35);
+	border: 1px solid rgba(228, 55, 65, 0.5);
+}
+
+.nre-visual-preview__diff-map-image {
+	display: block;
+	width: 100%;
+	height: auto;
 }
 
 .nre-dashboard__diff-error {

@@ -49,6 +49,7 @@ class NRE_Migration_Dashboard {
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
 		add_action( 'admin_post_nre_export_migration', [ $this, 'handle_export' ] );
 		add_action( 'admin_post_nopriv_nre_rollback_batch', [ $this, 'handle_rollback_batch' ] );
+		add_action( 'wp', [ $this, 'setup_revision_preview' ] );
 		add_filter( 'admin_body_class', [ $this, 'add_body_class' ] );
 	}
 
@@ -122,10 +123,11 @@ class NRE_Migration_Dashboard {
 			'nre-migration-dashboard',
 			'nreDashboard',
 			[
-				'restUrl'     => rest_url( self::REST_NAMESPACE ),
-				'nonce'       => wp_create_nonce( 'wp_rest' ),
-				'exportUrl'   => admin_url( 'admin-post.php' ),
-				'exportNonce' => wp_create_nonce( 'nre_export_migration' ),
+				'restUrl'      => rest_url( self::REST_NAMESPACE ),
+				'nonce'        => wp_create_nonce( 'wp_rest' ),
+				'exportUrl'    => admin_url( 'admin-post.php' ),
+				'exportNonce'  => wp_create_nonce( 'nre_export_migration' ),
+				'previewNonce' => wp_create_nonce( 'nre_revision_preview' ),
 			]
 		);
 
@@ -959,6 +961,113 @@ class NRE_Migration_Dashboard {
 				],
 			]
 		);
+	}
+
+	/**
+	 * Set up revision preview on the frontend.
+	 *
+	 * When a post URL includes `?nre_preview_revision=<id>`, the post's
+	 * content/title/excerpt are swapped with the revision's data before
+	 * the theme template renders. This gives a true frontend preview with
+	 * the full theme (header, nav, sidebar, footer).
+	 */
+	public function setup_revision_preview() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce verified below via check_admin_referer.
+		if ( ! isset( $_GET['nre_preview_revision'] ) ) {
+			return;
+		}
+
+		check_admin_referer( 'nre_revision_preview' );
+
+		$revision_id = (int) $_GET['nre_preview_revision'];
+		$parent_id   = get_queried_object_id();
+
+		if ( ! current_user_can( 'edit_post', $parent_id ) ) {
+			wp_die( esc_html__( 'You do not have permission to preview revisions.', 'newspack-revisions-enhanced' ), 403 );
+		}
+
+		// Prevent caching, search-engine indexing, and admin bar.
+		nocache_headers();
+		show_admin_bar( false );
+		add_action(
+			'wp_head',
+			function () {
+				echo '<meta name="robots" content="noindex, nofollow">' . "\n";
+			}
+		);
+
+		if ( 0 === $revision_id ) {
+			// No previous version — show an empty-state message in the theme.
+			$empty_content = '<p style="color:#757575;text-align:center;padding:3rem 1rem;">'
+				. esc_html__( 'This post did not exist before the migration.', 'newspack-revisions-enhanced' )
+				. '</p>';
+			add_action(
+				'the_post',
+				function ( $post, $query ) use ( $empty_content ) {
+					if ( $query->is_main_query() ) {
+						$post->post_title   = __( '(No previous version)', 'newspack-revisions-enhanced' );
+						$post->post_content = $empty_content;
+						// Update $pages so get_the_content() reads our swapped content
+						// (setup_postdata copies post_content into $pages before the_post fires).
+						// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+						$GLOBALS['pages'] = [ $empty_content ];
+						// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+						$GLOBALS['numpages'] = 1;
+					}
+				},
+				10,
+				2
+			);
+			return;
+		}
+
+		$revision = get_post( $revision_id );
+		if ( ! $revision || 'revision' !== $revision->post_type ) {
+			wp_die( esc_html__( 'Revision not found.', 'newspack-revisions-enhanced' ), 404 );
+		}
+
+		// Verify the revision belongs to the queried post.
+		if ( (int) $revision->post_parent !== $parent_id ) {
+			wp_die( esc_html__( 'Revision does not belong to this post.', 'newspack-revisions-enhanced' ), 403 );
+		}
+
+		// Swap the main query post's fields with the revision's data.
+		// We also update $GLOBALS['pages'] because setup_postdata() has already
+		// copied the original post_content into $pages before the_post fires,
+		// and get_the_content() reads from $pages, not $post->post_content.
+		add_action(
+			'the_post',
+			function ( $post, $query ) use ( $revision ) {
+				if ( $query->is_main_query() ) {
+					$post->post_title   = $revision->post_title;
+					$post->post_content = $revision->post_content;
+					$post->post_excerpt = $revision->post_excerpt;
+					// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+					$GLOBALS['pages'] = [ $revision->post_content ];
+					// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+					$GLOBALS['numpages'] = 1;
+				}
+			},
+			10,
+			2
+		);
+
+		// Swap featured image if the revision has one tracked.
+		$rev_thumbnail = get_post_meta( $revision_id, '_thumbnail_id', true );
+		if ( $rev_thumbnail ) {
+			$queried_id = get_queried_object_id();
+			add_filter(
+				'get_post_metadata',
+				function ( $value, $object_id, $meta_key ) use ( $queried_id, $rev_thumbnail ) {
+					if ( $object_id === $queried_id && '_thumbnail_id' === $meta_key ) {
+						return [ $rev_thumbnail ];
+					}
+					return $value;
+				},
+				10,
+				3
+			);
+		}
 	}
 
 	/**
