@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build assets
+        run: npm run build
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Create release zip
+        run: |
+          PLUGIN_SLUG="newspack-revisions-enhanced"
+          BUILD_DIR=$(mktemp -d)
+          DEST="$BUILD_DIR/$PLUGIN_SLUG"
+          mkdir -p "$DEST"
+
+          # Copy all files, then remove those listed in .distignore.
+          rsync -a --exclude='.git' ./ "$DEST/"
+
+          while IFS= read -r pattern; do
+            pattern=$(echo "$pattern" | xargs)
+            [ -z "$pattern" ] && continue
+            [[ "$pattern" == \#* ]] && continue
+            rm -rf "${DEST:?}/${pattern}"
+          done < .distignore
+
+          cd "$BUILD_DIR"
+          zip -r "$GITHUB_WORKSPACE/$PLUGIN_SLUG.zip" "$PLUGIN_SLUG/"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --generate-notes \
+            newspack-revisions-enhanced.zip

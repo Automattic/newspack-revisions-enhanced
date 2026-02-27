@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Newspack Revisions Enhanced
  * Description: Read-only revision tracking for post meta and taxonomy term assignments.
- * Version:     1.0.0
+ * Version:     0.1.0
  * Author:      Newspack
  * License:     GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'NRE_VERSION', '1.0.0' );
+define( 'NRE_VERSION', '0.1.0' );
 define( 'NRE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NRE_TAX_META_PREFIX', '_nre_tax_' );
 

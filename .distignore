@@ -1,0 +1,10 @@
+.github/
+.gitignore
+.phpcs.xml.dist
+bin/
+node_modules/
+package.json
+package-lock.json
+phpunit.xml.dist
+src/
+tests/

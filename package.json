@@ -1,6 +1,6 @@
 {
   "name": "newspack-revisions-enhanced-dashboard",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "build": "wp-scripts build src/dashboard/index.js --output-path=build/dashboard",
