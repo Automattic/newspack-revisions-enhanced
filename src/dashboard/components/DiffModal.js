@@ -104,7 +104,6 @@ export default function DiffModal( {
 
 			{ activeTab === 'visual-preview' && (
 				<VisualPreview
-					postId={ postId }
 					compareFrom={ compareFrom }
 					compareTo={ compareTo }
 					viewUrl={ viewUrl }

@@ -114,7 +114,11 @@ function generateDiffMap( canvasA, canvasB ) {
 		const dr = Math.abs( pixA[ i ] - pixB[ i ] );
 		const dg = Math.abs( pixA[ i + 1 ] - pixB[ i + 1 ] );
 		const db = Math.abs( pixA[ i + 2 ] - pixB[ i + 2 ] );
-		if ( dr > DIFF_THRESHOLD || dg > DIFF_THRESHOLD || db > DIFF_THRESHOLD ) {
+		if (
+			dr > DIFF_THRESHOLD ||
+			dg > DIFF_THRESHOLD ||
+			db > DIFF_THRESHOLD
+		) {
 			const px = ( i / 4 ) % w;
 			const py = Math.floor( i / 4 / w );
 			const bx = Math.floor( px / BLOCK_SIZE );
@@ -153,7 +157,6 @@ function generateDiffMap( canvasA, canvasB ) {
 }
 
 export default function VisualPreview( {
-	postId,
 	compareFrom,
 	compareTo,
 	viewUrl,
@@ -185,7 +188,11 @@ export default function VisualPreview( {
 	}, [ mode ] );
 
 	const generateDiffMapFromIframes = useCallback( async () => {
-		if ( diffMapGenerated.current || ! diffBeforeRef.current || ! diffAfterRef.current ) {
+		if (
+			diffMapGenerated.current ||
+			! diffBeforeRef.current ||
+			! diffAfterRef.current
+		) {
 			return;
 		}
 		diffMapGenerated.current = true;
@@ -205,8 +212,16 @@ export default function VisualPreview( {
 
 			const html2canvas = await loadHtml2Canvas();
 			const [ canvasA, canvasB ] = await Promise.all( [
-				captureIframe( diffBeforeRef.current, html2canvas, captureWidth ),
-				captureIframe( diffAfterRef.current, html2canvas, captureWidth ),
+				captureIframe(
+					diffBeforeRef.current,
+					html2canvas,
+					captureWidth
+				),
+				captureIframe(
+					diffAfterRef.current,
+					html2canvas,
+					captureWidth
+				),
 			] );
 			const diffCanvas = generateDiffMap( canvasA, canvasB );
 			setDiffMapUrl( diffCanvas.toDataURL() );
