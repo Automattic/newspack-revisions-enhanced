@@ -261,6 +261,9 @@ export default function PostTable( {
 					termId={ termId }
 					postTitle={ diffPost.title }
 					postStatus={ diffPost.status }
+					compareFrom={ diffPost.compare_from }
+					compareTo={ diffPost.compare_to }
+					viewUrl={ diffPost.view_url }
 					onClose={ () => setDiffPost( null ) }
 				/>
 			) }
