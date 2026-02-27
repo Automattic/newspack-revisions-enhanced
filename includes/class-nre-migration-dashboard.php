@@ -123,11 +123,11 @@ class NRE_Migration_Dashboard {
 			'nre-migration-dashboard',
 			'nreDashboard',
 			[
-				'restUrl'     => rest_url( self::REST_NAMESPACE ),
-				'nonce'       => wp_create_nonce( 'wp_rest' ),
-				'exportUrl'   => admin_url( 'admin-post.php' ),
+				'restUrl'      => rest_url( self::REST_NAMESPACE ),
+				'nonce'        => wp_create_nonce( 'wp_rest' ),
+				'exportUrl'    => admin_url( 'admin-post.php' ),
 				'exportNonce'  => wp_create_nonce( 'nre_export_migration' ),
-			'previewNonce' => wp_create_nonce( 'nre_revision_preview' ),
+				'previewNonce' => wp_create_nonce( 'nre_revision_preview' ),
 			]
 		);
 
@@ -1006,8 +1006,11 @@ class NRE_Migration_Dashboard {
 					if ( $query->is_main_query() ) {
 						$post->post_title   = __( '(No previous version)', 'newspack-revisions-enhanced' );
 						$post->post_content = $empty_content;
-						// Update $pages so get_the_content() reads our content.
-						$GLOBALS['pages']    = [ $empty_content ];
+						// Update $pages so get_the_content() reads our swapped content
+						// (setup_postdata copies post_content into $pages before the_post fires).
+						// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+						$GLOBALS['pages'] = [ $empty_content ];
+						// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
 						$GLOBALS['numpages'] = 1;
 					}
 				},
@@ -1033,7 +1036,9 @@ class NRE_Migration_Dashboard {
 					$post->post_title   = $revision->post_title;
 					$post->post_content = $revision->post_content;
 					$post->post_excerpt = $revision->post_excerpt;
-					$GLOBALS['pages']    = [ $revision->post_content ];
+					// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+					$GLOBALS['pages'] = [ $revision->post_content ];
+					// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
 					$GLOBALS['numpages'] = 1;
 				}
 			},
