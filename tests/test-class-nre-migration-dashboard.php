@@ -231,6 +231,65 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 		$this->assertSame( 1, $data['stats']['posts_updated'] );
 	}
 
+	public function test_pre_existing_post_without_prior_revision_is_updated() {
+		wp_set_current_user( $this->editor_id );
+
+		// Create a post with a date in the past (before migration).
+		$post_id = $this->factory->post->create(
+			[
+				'post_title'    => 'Old Post',
+				'post_content'  => 'Original content',
+				'post_date'     => '2020-01-01 00:00:00',
+				'post_date_gmt' => '2020-01-01 00:00:00',
+			]
+		);
+
+		// Delete any auto-created revisions so there's no prior revision.
+		foreach ( wp_get_post_revisions( $post_id ) as $rev ) {
+			wp_delete_post_revision( $rev->ID );
+		}
+
+		// Now run a migration that updates this post for the first time.
+		NRE_Migration_Context::start( 'First Touch Migration' );
+		$context = NRE_Migration_Context::get_context();
+
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Migrated content',
+			]
+		);
+
+		NRE_Migration_Context::stop();
+
+		$slug = sanitize_title( 'First Touch Migration-' . $context['timestamp'] );
+		$term = get_term_by( 'slug', $slug, 'nre_migration' );
+		$this->assertNotFalse( $term );
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $term->term_id );
+		$request->set_param( 'term_id', $term->term_id );
+
+		$response = $this->dashboard->get_migration_detail( $request );
+		$data     = $response->get_data();
+
+		// The post existed before the migration, so it should be "updated" not "created".
+		$this->assertSame( 1, $data['stats']['posts_updated'] );
+		$this->assertSame( 0, $data['stats']['posts_created'] );
+	}
+
+	public function test_post_created_during_migration_is_created() {
+		$migration = $this->create_migration_with_new_post( 'Creation Detection' );
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] );
+		$request->set_param( 'term_id', $migration['term_id'] );
+
+		$response = $this->dashboard->get_migration_detail( $request );
+		$data     = $response->get_data();
+
+		$this->assertSame( 1, $data['stats']['posts_created'] );
+		$this->assertSame( 0, $data['stats']['posts_updated'] );
+	}
+
 	public function test_get_migration_posts_correct_post_data() {
 		$migration = $this->create_migration();
 
