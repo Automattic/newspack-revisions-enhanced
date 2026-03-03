@@ -521,11 +521,12 @@ class NRE_Migration_Dashboard {
 		// LEFT JOIN on migration meta lets us count migration revisions (both meta match)
 		// and find the earliest migration revision per post. MIN(r.ID) gives the absolute
 		// first revision — if it's older than the first migration revision, the post
-		// existed before the migration ("updated"), otherwise it was "created".
+		// existed before the migration ("updated"), otherwise fall back to post_date_gmt.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT r.post_parent AS post_id,
+						MIN( p.post_date_gmt ) AS post_created_gmt,
 						SUM( CASE WHEN mn.meta_id IS NOT NULL AND mt.meta_id IS NOT NULL THEN 1 ELSE 0 END ) AS revision_count,
 						MIN( CASE WHEN mn.meta_id IS NOT NULL AND mt.meta_id IS NOT NULL THEN r.ID ELSE NULL END ) AS first_migration_rev_id,
 						MIN( r.ID ) AS min_rev_id
@@ -533,6 +534,7 @@ class NRE_Migration_Dashboard {
 				 INNER JOIN {$wpdb->term_relationships} tr ON r.post_parent = tr.object_id
 				 INNER JOIN {$wpdb->term_taxonomy} tt
 					ON tr.term_taxonomy_id = tt.term_taxonomy_id AND tt.term_id = %d AND tt.taxonomy = %s
+				 INNER JOIN {$wpdb->posts} p ON r.post_parent = p.ID
 				 LEFT JOIN {$wpdb->postmeta} mn
 					ON r.ID = mn.post_id AND mn.meta_key = '_nre_migration_name' AND mn.meta_value = %s
 				 LEFT JOIN {$wpdb->postmeta} mt
@@ -547,11 +549,23 @@ class NRE_Migration_Dashboard {
 			)
 		);
 
-		$statuses = [];
+		$migration_date = gmdate( 'Y-m-d H:i:s', $migration_ts );
+		$statuses       = [];
 
 		foreach ( $rows as $row ) {
 			$post_id = (int) $row->post_id;
-			$status  = ( (int) $row->min_rev_id < (int) $row->first_migration_rev_id ) ? 'updated' : 'created';
+
+			// Primary check: if the earliest revision is older than the first migration
+			// revision, the post had revisions before the migration → "updated".
+			if ( (int) $row->min_rev_id < (int) $row->first_migration_rev_id ) {
+				$status = 'updated';
+			} elseif ( empty( $row->post_created_gmt ) || '0000-00-00 00:00:00' === $row->post_created_gmt ) {
+				// Zero/empty date — can't determine, treat as "created".
+				$status = 'created';
+			} else {
+				// Fallback: post existed before migration but had no prior revisions.
+				$status = ( $row->post_created_gmt < $migration_date ) ? 'updated' : 'created';
+			}
 
 			$statuses[ $post_id ] = [
 				'status'         => $status,
@@ -650,8 +664,22 @@ class NRE_Migration_Dashboard {
 			$prev_rev_id = $rev->ID;
 		}
 
-		$status       = ( null === $pre_migration_rev_id ) ? 'created' : 'updated';
-		$can_rollback = ( 'updated' === $status );
+		// Primary check: if there's a pre-migration revision, the post was "updated".
+		if ( null !== $pre_migration_rev_id ) {
+			$status = 'updated';
+		} else {
+			// Fallback: post existed before the migration but had no prior revisions.
+			$post_created_gmt = $post->post_date_gmt;
+			if ( empty( $post_created_gmt ) || '0000-00-00 00:00:00' === $post_created_gmt ) {
+				$status = 'created';
+			} else {
+				$post_created_ts = strtotime( $post_created_gmt );
+				$status          = ( false !== $post_created_ts && $post_created_ts < $migration_ts ) ? 'updated' : 'created';
+			}
+		}
+
+		// Rollback requires both "updated" status and an actual pre-migration revision to restore from.
+		$can_rollback = ( 'updated' === $status && null !== $pre_migration_rev_id );
 
 		$compare_from = $pre_migration_rev_id ?? 0;
 		$compare_to   = ! empty( $migration_revisions ) ? end( $migration_revisions ) : null;
