@@ -525,7 +525,7 @@ class NRE_Migration_Dashboard {
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT r.post_parent AS post_id,
-						p.post_date_gmt AS post_created_gmt,
+						MIN( p.post_date_gmt ) AS post_created_gmt,
 						SUM( CASE WHEN mn.meta_id IS NOT NULL AND mt.meta_id IS NOT NULL THEN 1 ELSE 0 END ) AS revision_count
 				 FROM {$wpdb->posts} r
 				 INNER JOIN {$wpdb->term_relationships} tr ON r.post_parent = tr.object_id
@@ -653,9 +653,16 @@ class NRE_Migration_Dashboard {
 		// A post is "updated" if it existed before the migration, "created" otherwise.
 		// We can't rely solely on pre_migration_rev_id — posts updated for the first time
 		// by the migration won't have a prior revision.
-		$post_created_ts = strtotime( $post->post_date_gmt );
-		$status          = ( $post_created_ts < $migration_ts ) ? 'updated' : 'created';
-		$can_rollback    = ( 'updated' === $status );
+		$post_created_gmt = $post->post_date_gmt;
+		if ( empty( $post_created_gmt ) || '0000-00-00 00:00:00' === $post_created_gmt ) {
+			$status = 'created';
+		} else {
+			$post_created_ts = strtotime( $post_created_gmt );
+			$status          = ( false !== $post_created_ts && $post_created_ts < $migration_ts ) ? 'updated' : 'created';
+		}
+
+		// Rollback requires both "updated" status and an actual pre-migration revision to restore from.
+		$can_rollback = ( 'updated' === $status && null !== $pre_migration_rev_id );
 
 		$compare_from = $pre_migration_rev_id ?? 0;
 		$compare_to   = ! empty( $migration_revisions ) ? end( $migration_revisions ) : null;
