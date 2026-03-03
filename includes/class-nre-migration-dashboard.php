@@ -550,8 +550,14 @@ class NRE_Migration_Dashboard {
 		$statuses       = [];
 
 		foreach ( $rows as $row ) {
-			$post_id = (int) $row->post_id;
-			$status  = ( $row->post_created_gmt < $migration_date ) ? 'updated' : 'created';
+			$post_id     = (int) $row->post_id;
+			$created_gmt = $row->post_created_gmt;
+
+			if ( empty( $created_gmt ) || '0000-00-00 00:00:00' === $created_gmt ) {
+				$status = 'created';
+			} else {
+				$status = ( $created_gmt < $migration_date ) ? 'updated' : 'created';
+			}
 
 			$statuses[ $post_id ] = [
 				'status'         => $status,
