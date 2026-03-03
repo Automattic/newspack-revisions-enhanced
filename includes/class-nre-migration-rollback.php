@@ -302,6 +302,11 @@ class NRE_Migration_Rollback {
 		$skip_prefixes = [ '_nre_migration_', NRE_TAX_META_PREFIX ];
 		$skip_exact    = [ '_nre_post_type' ];
 
+		// Get tracked meta keys so we can also delete keys that were added
+		// during the migration but don't exist on the pre-migration revision.
+		$post_type    = get_post_type( $post_id );
+		$tracked_keys = wp_post_revision_meta_keys( $post_type );
+
 		foreach ( $meta_by_key as $meta_key => $values ) {
 			// Skip NRE internal meta.
 			if ( in_array( $meta_key, $skip_exact, true ) ) {
@@ -325,6 +330,14 @@ class NRE_Migration_Rollback {
 				// Values from DB are raw (serialized if complex). Use add_metadata
 				// with wp_slash to match how _wp_copy_post_meta works.
 				add_metadata( 'post', $post_id, $meta_key, wp_slash( maybe_unserialize( $raw_value ) ) );
+			}
+		}
+
+		// Delete tracked meta keys that exist on the parent but were absent
+		// from the pre-migration revision (i.e., added during the migration).
+		foreach ( $tracked_keys as $meta_key ) {
+			if ( ! isset( $meta_by_key[ $meta_key ] ) ) {
+				delete_post_meta( $post_id, $meta_key );
 			}
 		}
 	}

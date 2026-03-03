@@ -401,6 +401,41 @@ class Test_NRE_Migration_Rollback extends WP_UnitTestCase {
 		$this->assertSame( 'Original SEO', $rev_seo );
 	}
 
+	public function test_rollback_deletes_meta_added_during_migration() {
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Pre-migration revision (no extra_field meta exists yet).
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Pre-migration',
+			]
+		);
+
+		// Migration: add a brand-new meta key.
+		NRE_Migration_Context::start( 'Added Meta Rollback' );
+		$context = NRE_Migration_Context::get_context();
+
+		update_post_meta( $post_id, 'extra_field', 'migration-only value' );
+
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Migrated',
+			]
+		);
+
+		NRE_Migration_Context::stop();
+
+		// Verify the meta was added.
+		$this->assertSame( 'migration-only value', get_post_meta( $post_id, 'extra_field', true ) );
+
+		$this->rollback->rollback_post( $post_id, 'Added Meta Rollback', $context['timestamp'] );
+
+		// The meta key that was added during migration should be removed.
+		$this->assertEmpty( get_post_meta( $post_id, 'extra_field', true ) );
+	}
+
 	public function test_rollback_does_not_copy_nre_internal_meta() {
 		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
 
