@@ -4,7 +4,7 @@
  *
  * Usage:
  *   NRE_Migration_Context::start( 'Batch import 2024-Q3 articles' );
- *   // ... wp_update_post() or before_update()/after_update() around raw $wpdb ...
+ *   // ... wp_update_post() or NRE_Migration_Context::before_update()/after_update() around raw $wpdb ...
  *   NRE_Migration_Context::stop();
  *
  * @package Newspack_Revisions_Enhanced
