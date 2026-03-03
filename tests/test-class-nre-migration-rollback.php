@@ -321,6 +321,152 @@ class Test_NRE_Migration_Rollback extends WP_UnitTestCase {
 		$this->assertGreaterThanOrEqual( 1, $result['skipped'] );
 	}
 
+	public function test_rollback_post_restores_meta() {
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Set pre-migration meta.
+		update_post_meta( $post_id, 'seo_title', 'Original SEO Title' );
+		update_post_meta( $post_id, '_thumbnail_id', 42 );
+
+		// Pre-migration revision (meta is snapshotted by WP's revisioned meta).
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Pre-migration',
+			]
+		);
+
+		// Migration: change meta.
+		NRE_Migration_Context::start( 'Meta Rollback' );
+		$context = NRE_Migration_Context::get_context();
+
+		update_post_meta( $post_id, 'seo_title', 'Migrated SEO Title' );
+		update_post_meta( $post_id, '_thumbnail_id', 99 );
+
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Migrated',
+			]
+		);
+
+		NRE_Migration_Context::stop();
+
+		// Verify migration changed the meta.
+		$this->assertSame( 'Migrated SEO Title', get_post_meta( $post_id, 'seo_title', true ) );
+
+		$this->rollback->rollback_post( $post_id, 'Meta Rollback', $context['timestamp'] );
+
+		// Meta should be restored to pre-migration values.
+		$this->assertSame( 'Original SEO Title', get_post_meta( $post_id, 'seo_title', true ) );
+		$this->assertEquals( 42, get_post_meta( $post_id, '_thumbnail_id', true ) );
+	}
+
+	public function test_rollback_revision_captures_restored_meta() {
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		update_post_meta( $post_id, 'seo_title', 'Original SEO' );
+
+		// Pre-migration revision.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Pre-migration',
+			]
+		);
+
+		// Migration: change meta.
+		NRE_Migration_Context::start( 'Revision Meta Test' );
+		$context = NRE_Migration_Context::get_context();
+
+		update_post_meta( $post_id, 'seo_title', 'Migrated SEO' );
+
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Migrated',
+			]
+		);
+
+		NRE_Migration_Context::stop();
+
+		$this->rollback->rollback_post( $post_id, 'Revision Meta Test', $context['timestamp'] );
+
+		// The newest revision (created by rollback) should have the restored meta,
+		// not the stale pre-rollback value.
+		$revisions    = wp_get_post_revisions( $post_id, [ 'order' => 'DESC' ] );
+		$rollback_rev = reset( $revisions );
+
+		$rev_seo = get_post_meta( $rollback_rev->ID, 'seo_title', true );
+		$this->assertSame( 'Original SEO', $rev_seo );
+	}
+
+	public function test_rollback_deletes_meta_added_during_migration() {
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Pre-migration revision (no extra_field meta exists yet).
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Pre-migration',
+			]
+		);
+
+		// Migration: add a brand-new meta key.
+		NRE_Migration_Context::start( 'Added Meta Rollback' );
+		$context = NRE_Migration_Context::get_context();
+
+		update_post_meta( $post_id, 'extra_field', 'migration-only value' );
+
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Migrated',
+			]
+		);
+
+		NRE_Migration_Context::stop();
+
+		// Verify the meta was added.
+		$this->assertSame( 'migration-only value', get_post_meta( $post_id, 'extra_field', true ) );
+
+		$this->rollback->rollback_post( $post_id, 'Added Meta Rollback', $context['timestamp'] );
+
+		// The meta key that was added during migration should be removed.
+		$this->assertEmpty( get_post_meta( $post_id, 'extra_field', true ) );
+	}
+
+	public function test_rollback_does_not_copy_nre_internal_meta() {
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Pre-migration revision.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Pre-migration',
+			]
+		);
+
+		// Migration.
+		NRE_Migration_Context::start( 'Internal Meta Test' );
+		$context = NRE_Migration_Context::get_context();
+
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Migrated',
+			]
+		);
+
+		NRE_Migration_Context::stop();
+
+		$this->rollback->rollback_post( $post_id, 'Internal Meta Test', $context['timestamp'] );
+
+		// NRE internal meta should NOT be copied to the parent post.
+		$this->assertEmpty( get_post_meta( $post_id, '_nre_migration_name', true ) );
+		$this->assertEmpty( get_post_meta( $post_id, '_nre_migration_ts', true ) );
+	}
+
 	public function test_rollback_creates_new_revision() {
 		$data = $this->create_migrated_post();
 

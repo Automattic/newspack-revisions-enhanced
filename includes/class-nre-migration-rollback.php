@@ -185,11 +185,13 @@ class NRE_Migration_Rollback {
 	}
 
 	/**
-	 * Execute the rollback: restore taxonomy, post type, then core fields.
+	 * Execute the rollback: restore taxonomy, post type, meta, then core fields.
 	 *
-	 * Order matters: taxonomy and post type are restored first so that
-	 * wp_restore_post_revision() creates a new revision that captures
-	 * the already-restored state via NRE's _wp_put_post_revision hooks.
+	 * Order matters: taxonomy, post type, and meta are restored BEFORE
+	 * wp_restore_post_revision() so that the new revision it creates
+	 * (via wp_save_revisioned_meta_fields) captures the already-restored
+	 * state. If meta were restored after, the new revision would snapshot
+	 * the stale pre-rollback values, making diffs appear empty.
 	 *
 	 * @param int $post_id         The post ID to restore.
 	 * @param int $pre_revision_id The revision ID to restore from.
@@ -202,7 +204,16 @@ class NRE_Migration_Rollback {
 		// 2. Restore post type from the pre-migration revision.
 		$this->restore_post_type( $post_id, $pre_revision_id );
 
-		// 3. Restore core fields + registered meta (creates a new revision).
+		// 3. Restore all tracked meta from the revision.
+		// This must happen BEFORE wp_restore_post_revision() because that
+		// function calls wp_update_post() which creates a new revision.
+		// The new revision snapshots the parent's current meta via
+		// wp_save_revisioned_meta_fields — so the meta must already be
+		// restored for the snapshot to be correct.
+		$this->restore_meta( $post_id, $pre_revision_id );
+
+		// 4. Restore core fields (title, content, excerpt, etc.).
+		// This creates a new revision that captures the full restored state.
 		$result = wp_restore_post_revision( $pre_revision_id );
 
 		if ( ! $result || is_wp_error( $result ) ) {
@@ -250,6 +261,81 @@ class NRE_Migration_Rollback {
 
 		if ( $stored_type && get_post_type( $post_id ) !== $stored_type ) {
 			set_post_type( $post_id, $stored_type );
+		}
+	}
+
+	/**
+	 * Restore meta from the pre-migration revision to the post.
+	 *
+	 * Reads every meta row stored on the revision directly from the database
+	 * (bypassing object cache) and writes it to the parent post. NRE internal
+	 * meta (migration tags, taxonomy snapshots, post type) is excluded since
+	 * those are handled by dedicated restore methods or are revision-only data.
+	 *
+	 * Also deletes any tracked meta keys that were added during the migration
+	 * (present on the parent but absent from the pre-migration revision).
+	 *
+	 * @param int $post_id     The post ID.
+	 * @param int $revision_id The revision ID to restore meta from.
+	 */
+	private function restore_meta( $post_id, $revision_id ) {
+		global $wpdb;
+
+		// Read all meta directly from the revision's own rows in postmeta.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$revision_meta = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d",
+				$revision_id
+			)
+		);
+
+		// Collect meta values per key (a key can have multiple rows).
+		$meta_by_key = [];
+		foreach ( $revision_meta as $row ) {
+			$meta_by_key[ $row->meta_key ][] = $row->meta_value;
+		}
+
+		// Keys that are NRE internal — stored on revisions for NRE's own
+		// tracking but should not be copied to the parent post.
+		$skip_prefixes = [ '_nre_migration_', NRE_TAX_META_PREFIX ];
+		$skip_exact    = [ NRE_Post_Type_Revisions::META_KEY ];
+
+		foreach ( $meta_by_key as $meta_key => $values ) {
+			// Skip NRE internal meta.
+			if ( in_array( $meta_key, $skip_exact, true ) ) {
+				continue;
+			}
+
+			$skip = false;
+			foreach ( $skip_prefixes as $prefix ) {
+				if ( 0 === strpos( $meta_key, $prefix ) ) {
+					$skip = true;
+					break;
+				}
+			}
+			if ( $skip ) {
+				continue;
+			}
+
+			// Clear existing values on the parent post, then write revision values.
+			delete_post_meta( $post_id, $meta_key );
+			foreach ( $values as $raw_value ) {
+				// Values from DB are raw (serialized if complex). Use add_metadata
+				// with wp_slash to match how _wp_copy_post_meta works.
+				add_metadata( 'post', $post_id, $meta_key, wp_slash( maybe_unserialize( $raw_value ) ) );
+			}
+		}
+
+		// Delete tracked meta keys that exist on the parent but were absent
+		// from the pre-migration revision (i.e., added during the migration).
+		$post_type    = get_post_type( $post_id );
+		$tracked_keys = wp_post_revision_meta_keys( $post_type );
+
+		foreach ( $tracked_keys as $meta_key ) {
+			if ( ! isset( $meta_by_key[ $meta_key ] ) ) {
+				delete_post_meta( $post_id, $meta_key );
+			}
 		}
 	}
 }
