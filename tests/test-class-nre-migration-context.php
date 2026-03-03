@@ -434,6 +434,25 @@ class Test_NRE_Migration_Context extends WP_UnitTestCase {
 		$this->assertSame( 'Migrated content', $migration->post_content );
 	}
 
+	public function test_before_after_update_noop_without_context() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Delete auto-revisions.
+		foreach ( wp_get_post_revisions( $post_id ) as $rev ) {
+			wp_delete_post_revision( $rev->ID );
+		}
+
+		// No start() call — context is inactive.
+		NRE_Migration_Context::before_update( $post_id );
+		NRE_Migration_Context::after_update( $post_id );
+
+		// No revisions should have been created.
+		$this->assertEmpty( wp_get_post_revisions( $post_id ) );
+	}
+
 	public function test_start_stop_lifecycle() {
 		$this->assertNull( NRE_Migration_Context::get_context() );
 

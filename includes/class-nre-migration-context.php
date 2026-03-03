@@ -190,6 +190,10 @@ class NRE_Migration_Context {
 	 * @param int $post_id The post about to be modified.
 	 */
 	public static function before_update( $post_id ) {
+		if ( null === self::$name ) {
+			return;
+		}
+
 		$post = get_post( $post_id );
 		if ( ! $post || wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
 			return;
@@ -215,6 +219,10 @@ class NRE_Migration_Context {
 	 * @param int $post_id The post that was just modified.
 	 */
 	public static function after_update( $post_id ) {
+		if ( null === self::$name ) {
+			return;
+		}
+
 		$post = get_post( $post_id );
 		if ( ! $post || wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
 			return;
