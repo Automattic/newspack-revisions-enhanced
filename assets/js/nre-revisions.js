@@ -175,7 +175,7 @@
 					jumpToPair( pairs[0] );
 				} else if ( pairs[0].from === null ) {
 					// Creation migration with multiple revisions —
-					// show the first (creation) pair in slider mode.
+					// show the first (creation) pair compared against nothing.
 					jumpToPair( pairs[0] );
 				} else {
 					// Update migration — show full range in compareTwoMode.
