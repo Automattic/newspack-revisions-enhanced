@@ -311,6 +311,129 @@ class Test_NRE_Migration_Context extends WP_UnitTestCase {
 		$this->assertTrue( true );
 	}
 
+	public function test_before_update_creates_baseline_revision() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Delete any auto-created revisions so the post has none.
+		$revisions = wp_get_post_revisions( $post_id );
+		foreach ( $revisions as $rev ) {
+			wp_delete_post_revision( $rev->ID );
+		}
+		$this->assertEmpty( wp_get_post_revisions( $post_id ) );
+
+		NRE_Migration_Context::start( 'Before Update Test' );
+		NRE_Migration_Context::before_update( $post_id );
+
+		$revisions = wp_get_post_revisions( $post_id );
+		$this->assertCount( 1, $revisions );
+
+		// The baseline revision should NOT be tagged with migration meta.
+		$rev  = reset( $revisions );
+		$name = get_metadata( 'post', $rev->ID, '_nre_migration_name', true );
+		$this->assertEmpty( $name );
+
+		NRE_Migration_Context::stop();
+	}
+
+	public function test_before_update_skips_when_revisions_exist() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Force a revision to exist.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Revision 1',
+			]
+		);
+
+		$count_before = count( wp_get_post_revisions( $post_id ) );
+
+		NRE_Migration_Context::start( 'Before Update Skip Test' );
+		NRE_Migration_Context::before_update( $post_id );
+
+		$count_after = count( wp_get_post_revisions( $post_id ) );
+		$this->assertSame( $count_before, $count_after );
+
+		NRE_Migration_Context::stop();
+	}
+
+	public function test_after_update_creates_tagged_revision() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		NRE_Migration_Context::start( 'After Update Test' );
+
+		// Simulate a raw SQL update by directly modifying the post.
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Updated via raw SQL' ],
+			[ 'ID' => $post_id ]
+		);
+
+		NRE_Migration_Context::after_update( $post_id );
+		NRE_Migration_Context::stop();
+
+		// The newest revision should be tagged.
+		$revisions = wp_get_post_revisions( $post_id, [ 'order' => 'DESC' ] );
+		$latest    = reset( $revisions );
+
+		$name = get_metadata( 'post', $latest->ID, '_nre_migration_name', true );
+		$this->assertSame( 'After Update Test', $name );
+
+		// The revision should capture the updated content.
+		$this->assertSame( 'Updated via raw SQL', $latest->post_content );
+	}
+
+	public function test_before_after_update_full_workflow() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original content' ] );
+
+		// Delete auto-revisions to start clean.
+		foreach ( wp_get_post_revisions( $post_id ) as $rev ) {
+			wp_delete_post_revision( $rev->ID );
+		}
+
+		NRE_Migration_Context::start( 'Full Workflow' );
+
+		NRE_Migration_Context::before_update( $post_id );
+
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Migrated content' ],
+			[ 'ID' => $post_id ]
+		);
+
+		NRE_Migration_Context::after_update( $post_id );
+		NRE_Migration_Context::stop();
+
+		$revisions = wp_get_post_revisions( $post_id, [ 'order' => 'ASC' ] );
+		$this->assertGreaterThanOrEqual( 2, count( $revisions ) );
+
+		// First revision: untagged baseline.
+		$baseline      = reset( $revisions );
+		$baseline_name = get_metadata( 'post', $baseline->ID, '_nre_migration_name', true );
+		$this->assertEmpty( $baseline_name );
+		$this->assertSame( 'Original content', $baseline->post_content );
+
+		// Last revision: tagged migration.
+		$migration      = end( $revisions );
+		$migration_name = get_metadata( 'post', $migration->ID, '_nre_migration_name', true );
+		$this->assertSame( 'Full Workflow', $migration_name );
+		$this->assertSame( 'Migrated content', $migration->post_content );
+	}
+
 	public function test_start_stop_lifecycle() {
 		$this->assertNull( NRE_Migration_Context::get_context() );
 

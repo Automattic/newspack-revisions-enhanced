@@ -4,7 +4,7 @@
  *
  * Usage:
  *   NRE_Migration_Context::start( 'Batch import 2024-Q3 articles' );
- *   // ... wp_update_post() calls ...
+ *   // ... wp_update_post() or before_update()/after_update() around raw $wpdb ...
  *   NRE_Migration_Context::stop();
  *
  * @package Newspack_Revisions_Enhanced
@@ -179,6 +179,49 @@ class NRE_Migration_Context {
 		update_term_meta( self::$term_id, '_nre_migration_ts', self::$timestamp );
 
 		return self::$term_id;
+	}
+
+	/**
+	 * Create an untagged baseline revision before the migration modifies a post.
+	 *
+	 * Suppresses migration tagging so the baseline isn't marked as a migration
+	 * revision. Only creates a revision if the post has none yet.
+	 *
+	 * @param int $post_id The post about to be modified.
+	 */
+	public static function before_update( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post || wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
+			return;
+		}
+
+		$revisions = wp_get_post_revisions( $post_id, [ 'posts_per_page' => 1 ] );
+		if ( ! empty( $revisions ) ) {
+			return;
+		}
+
+		// Suppress tagging so the baseline revision is clean.
+		remove_action( '_wp_put_post_revision', [ __CLASS__, 'save_migration_meta' ], 5 );
+		wp_save_post_revision( $post_id );
+		add_action( '_wp_put_post_revision', [ __CLASS__, 'save_migration_meta' ], 5, 2 );
+	}
+
+	/**
+	 * Create a tagged migration revision after a raw SQL update.
+	 *
+	 * Clears the post cache so the revision captures the updated state.
+	 * The revision is automatically tagged by save_migration_meta.
+	 *
+	 * @param int $post_id The post that was just modified.
+	 */
+	public static function after_update( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post || wp_is_post_revision( $post ) || wp_is_post_autosave( $post ) ) {
+			return;
+		}
+
+		clean_post_cache( $post_id );
+		wp_save_post_revision( $post_id );
 	}
 
 	/**
