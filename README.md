@@ -42,6 +42,18 @@ wp_set_post_terms( $post_id, $terms, 'category' );
 NRE_Migration_Context::stop();
 ```
 
+For migrators that use raw `$wpdb` queries (which bypass WordPress hooks), use the `before_update`/`after_update` helpers to manually create revisions:
+
+```php
+NRE_Migration_Context::start( 'Raw SQL migration' );
+
+NRE_Migration_Context::before_update( $post_id ); // Creates untagged baseline revision.
+$wpdb->update( $wpdb->posts, [ 'post_content' => 'New content' ], [ 'ID' => $post_id ] );
+NRE_Migration_Context::after_update( $post_id );  // Creates tagged migration revision.
+
+NRE_Migration_Context::stop();
+```
+
 What this does:
 
 - Every revision created between `start()` and `stop()` is tagged with the migration name and a Unix timestamp in revision meta.
@@ -55,6 +67,8 @@ What this does:
 | `NRE_Migration_Context::start( string $name )` | Begin a migration context. |
 | `NRE_Migration_Context::stop()` | End the current migration context. |
 | `NRE_Migration_Context::get_context()` | Returns `array{name: string, timestamp: int}` or `null` if inactive. |
+| `NRE_Migration_Context::before_update( int $post_id )` | Create an untagged baseline revision before a raw SQL update. Only creates one if the post has no revisions yet. No-op outside a migration context. |
+| `NRE_Migration_Context::after_update( int $post_id )` | Create a tagged migration revision after a raw SQL update. Clears post cache first so the revision captures the current DB state. No-op outside a migration context. |
 
 ## Filters Reference
 
