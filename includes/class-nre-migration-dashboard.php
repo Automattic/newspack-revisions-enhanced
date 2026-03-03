@@ -106,7 +106,7 @@ class NRE_Migration_Dashboard {
 
 		wp_enqueue_script(
 			'nre-migration-dashboard',
-			plugins_url( 'build/dashboard/index.js', __DIR__ ),
+			NRE_PLUGIN_URL . 'build/dashboard/index.js',
 			$asset['dependencies'],
 			$asset['version'],
 			true
@@ -114,7 +114,7 @@ class NRE_Migration_Dashboard {
 
 		wp_enqueue_style(
 			'nre-migration-dashboard',
-			plugins_url( 'build/dashboard/style-index.css', __DIR__ ),
+			NRE_PLUGIN_URL . 'build/dashboard/style-index.css',
 			[ 'wp-components' ],
 			$asset['version']
 		);

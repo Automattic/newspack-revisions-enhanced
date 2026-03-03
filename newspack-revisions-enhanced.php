@@ -18,6 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'NRE_VERSION', '0.1.0' );
 define( 'NRE_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'NRE_PLUGIN_URL', set_url_scheme( WP_PLUGIN_URL . '/newspack-revisions-enhanced/' ) );
 define( 'NRE_TAX_META_PREFIX', '_nre_tax_' );
 
 require_once NRE_PLUGIN_DIR . 'includes/class-nre-meta-revisions.php';
