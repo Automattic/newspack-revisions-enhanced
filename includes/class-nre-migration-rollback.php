@@ -265,12 +265,15 @@ class NRE_Migration_Rollback {
 	}
 
 	/**
-	 * Restore all tracked meta from the pre-migration revision to the post.
+	 * Restore meta from the pre-migration revision to the post.
 	 *
 	 * Reads every meta row stored on the revision directly from the database
 	 * (bypassing object cache) and writes it to the parent post. NRE internal
 	 * meta (migration tags, taxonomy snapshots, post type) is excluded since
 	 * those are handled by dedicated restore methods or are revision-only data.
+	 *
+	 * Also deletes any tracked meta keys that were added during the migration
+	 * (present on the parent but absent from the pre-migration revision).
 	 *
 	 * @param int $post_id     The post ID.
 	 * @param int $revision_id The revision ID to restore meta from.
@@ -287,10 +290,6 @@ class NRE_Migration_Rollback {
 			)
 		);
 
-		if ( empty( $revision_meta ) ) {
-			return;
-		}
-
 		// Collect meta values per key (a key can have multiple rows).
 		$meta_by_key = [];
 		foreach ( $revision_meta as $row ) {
@@ -300,12 +299,7 @@ class NRE_Migration_Rollback {
 		// Keys that are NRE internal — stored on revisions for NRE's own
 		// tracking but should not be copied to the parent post.
 		$skip_prefixes = [ '_nre_migration_', NRE_TAX_META_PREFIX ];
-		$skip_exact    = [ '_nre_post_type' ];
-
-		// Get tracked meta keys so we can also delete keys that were added
-		// during the migration but don't exist on the pre-migration revision.
-		$post_type    = get_post_type( $post_id );
-		$tracked_keys = wp_post_revision_meta_keys( $post_type );
+		$skip_exact    = [ NRE_Post_Type_Revisions::META_KEY ];
 
 		foreach ( $meta_by_key as $meta_key => $values ) {
 			// Skip NRE internal meta.
@@ -335,6 +329,9 @@ class NRE_Migration_Rollback {
 
 		// Delete tracked meta keys that exist on the parent but were absent
 		// from the pre-migration revision (i.e., added during the migration).
+		$post_type    = get_post_type( $post_id );
+		$tracked_keys = wp_post_revision_meta_keys( $post_type );
+
 		foreach ( $tracked_keys as $meta_key ) {
 			if ( ! isset( $meta_by_key[ $meta_key ] ) ) {
 				delete_post_meta( $post_id, $meta_key );
