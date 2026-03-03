@@ -82,7 +82,7 @@ class NRE_Migration_UI {
 
 		wp_enqueue_script(
 			'nre-revisions',
-			plugins_url( 'assets/js/nre-revisions.js', __DIR__ ),
+			NRE_PLUGIN_URL . 'assets/js/nre-revisions.js',
 			[ 'revisions' ],
 			NRE_VERSION,
 			true
@@ -90,7 +90,7 @@ class NRE_Migration_UI {
 
 		wp_enqueue_style(
 			'nre-revisions',
-			plugins_url( 'assets/css/nre-revisions.css', __DIR__ ),
+			NRE_PLUGIN_URL . 'assets/css/nre-revisions.css',
 			[ 'revisions' ],
 			NRE_VERSION
 		);
