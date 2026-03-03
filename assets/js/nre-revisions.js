@@ -94,6 +94,9 @@
 
 		/**
 		 * Get the sequential pairs for a migration's revisions.
+		 *
+		 * For "creation" migrations where the first revision is the very
+		 * first overall revision, from is null — there is no predecessor.
 		 */
 		function getMigrationPairs( migration ) {
 			var ids   = migration.revisionIds,
@@ -112,23 +115,25 @@
 					if ( idx > 0 ) {
 						fromRev = revisions.at( idx - 1 );
 					} else {
-						fromRev = rev;
+						fromRev = null;
 					}
 				} else {
 					fromRev = revisions.get( ids[ i - 1 ] );
 				}
 
-				if ( fromRev ) {
-					pairs.push( { from: fromRev, to: rev } );
-				}
+				pairs.push( { from: fromRev, to: rev } );
 			} );
 
 			return pairs;
 		}
 
 		function jumpToPair( pair ) {
-			model.set( { compareTwoMode: true } );
-			model.set( { from: pair.from, to: pair.to } );
+			if ( pair.from === null ) {
+				// Creation revision — compare from 0 (nothing) to show all content as additions.
+				model.set( { compareTwoMode: true, from: 0, to: pair.to } );
+			} else {
+				model.set( { compareTwoMode: true, from: pair.from, to: pair.to } );
+			}
 		}
 
 		function updateNav() {
@@ -165,10 +170,20 @@
 
 			var pairs = getMigrationPairs( migration );
 			if ( pairs.length > 0 ) {
-				jumpToPair( {
-					from: pairs[0].from,
-					to: pairs[ pairs.length - 1 ].to
-				} );
+				if ( pairs.length === 1 ) {
+					// Single revision — jump directly to it.
+					jumpToPair( pairs[0] );
+				} else if ( pairs[0].from === null ) {
+					// Creation migration with multiple revisions —
+					// show the first (creation) pair in slider mode.
+					jumpToPair( pairs[0] );
+				} else {
+					// Update migration — show full range in compareTwoMode.
+					jumpToPair( {
+						from: pairs[0].from,
+						to: pairs[ pairs.length - 1 ].to
+					} );
+				}
 				navIndex = 0;
 				updateNav();
 			}
