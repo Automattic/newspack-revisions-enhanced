@@ -419,7 +419,7 @@ class NRE_Migration_Context {
 			'%d', // comment_count.
 		];
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$result = $wpdb->insert( $wpdb->posts, $data, $formats );
 
 		if ( false === $result ) {
