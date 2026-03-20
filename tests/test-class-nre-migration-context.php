@@ -800,4 +800,160 @@ class Test_NRE_Migration_Context extends WP_UnitTestCase {
 
 		NRE_Migration_Context::stop();
 	}
+
+	public function test_raw_skips_wp_save_revisioned_meta_fields() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		// Verify wp_save_revisioned_meta_fields is normally hooked.
+		$this->assertNotFalse(
+			has_action( '_wp_put_post_revision', 'wp_save_revisioned_meta_fields' )
+		);
+
+		// Hook at priority 9 (just before wp_save_revisioned_meta_fields at 10)
+		// to detect whether the core handler is present when the action fires.
+		$hook_present = null;
+		$checker      = function () use ( &$hook_present ) {
+			$hook_present = has_action( '_wp_put_post_revision', 'wp_save_revisioned_meta_fields' );
+		};
+		add_action( '_wp_put_post_revision', $checker, 9 );
+
+		NRE_Migration_Context::start( 'Raw Meta Skip Test', [ 'raw_revisions' => true ] );
+
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Updated content' ],
+			[ 'ID' => $post_id ]
+		);
+
+		NRE_Migration_Context::after_update( $post_id );
+		NRE_Migration_Context::stop();
+
+		// The hook should have been temporarily removed during the raw do_action.
+		$this->assertFalse( $hook_present );
+
+		// And it should be restored after.
+		$this->assertNotFalse(
+			has_action( '_wp_put_post_revision', 'wp_save_revisioned_meta_fields' )
+		);
+
+		remove_action( '_wp_put_post_revision', $checker, 9 );
+	}
+
+	public function test_raw_restores_revisioned_meta_hook_after_stop() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Original' ] );
+
+		NRE_Migration_Context::start( 'Raw Hook Restore Test', [ 'raw_revisions' => true ] );
+
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Migrated' ],
+			[ 'ID' => $post_id ]
+		);
+
+		NRE_Migration_Context::after_update( $post_id );
+		NRE_Migration_Context::stop();
+
+		// After stop(), the core hook must be back for normal WP operation.
+		$this->assertNotFalse(
+			has_action( '_wp_put_post_revision', 'wp_save_revisioned_meta_fields' )
+		);
+	}
+
+	public function test_raw_term_assignment_cached_per_post() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create();
+
+		NRE_Migration_Context::start( 'Raw Cache Test', [ 'raw_revisions' => true ] );
+
+		global $wpdb;
+
+		// First after_update — term gets assigned.
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'First raw update' ],
+			[ 'ID' => $post_id ]
+		);
+		NRE_Migration_Context::after_update( $post_id );
+
+		$terms_after_first = wp_get_object_terms( $post_id, 'nre_migration', [ 'fields' => 'ids' ] );
+		$this->assertNotEmpty( $terms_after_first );
+
+		// Track wp_set_object_terms calls during second update.
+		$terms_set_count = 0;
+		$counter         = function () use ( &$terms_set_count ) {
+			++$terms_set_count;
+		};
+		add_action( 'set_object_terms', $counter );
+
+		// Second after_update for the same post — should skip wp_set_object_terms.
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Second raw update' ],
+			[ 'ID' => $post_id ]
+		);
+		NRE_Migration_Context::after_update( $post_id );
+
+		remove_action( 'set_object_terms', $counter );
+
+		// wp_set_object_terms should not have been called for this post.
+		$this->assertSame( 0, $terms_set_count );
+
+		// But the term should still be assigned.
+		$terms_after_second = wp_get_object_terms( $post_id, 'nre_migration', [ 'fields' => 'ids' ] );
+		$this->assertSame( $terms_after_first, $terms_after_second );
+
+		NRE_Migration_Context::stop();
+	}
+
+	public function test_raw_term_cache_cleared_on_stop() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create();
+
+		// First migration — assigns term.
+		NRE_Migration_Context::start( 'Cache Clear Test 1', [ 'raw_revisions' => true ] );
+
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Migration 1' ],
+			[ 'ID' => $post_id ]
+		);
+		NRE_Migration_Context::after_update( $post_id );
+		NRE_Migration_Context::stop();
+
+		// Second migration — same post should get term assigned again
+		// because stop() cleared the cache.
+		$terms_set_count = 0;
+		$counter         = function () use ( &$terms_set_count ) {
+			++$terms_set_count;
+		};
+		add_action( 'set_object_terms', $counter );
+
+		NRE_Migration_Context::start( 'Cache Clear Test 2', [ 'raw_revisions' => true ] );
+
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Migration 2' ],
+			[ 'ID' => $post_id ]
+		);
+		NRE_Migration_Context::after_update( $post_id );
+		NRE_Migration_Context::stop();
+
+		remove_action( 'set_object_terms', $counter );
+
+		// wp_set_object_terms should have been called for the second migration.
+		$this->assertGreaterThan( 0, $terms_set_count );
+	}
 }

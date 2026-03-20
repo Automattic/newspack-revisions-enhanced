@@ -54,6 +54,15 @@ class NRE_Migration_Context {
 	private static $raw_revisions = false;
 
 	/**
+	 * Set of parent post IDs that have already been assigned the migration
+	 * term during this migration context. Used to skip redundant
+	 * wp_set_object_terms() calls in save_migration_meta().
+	 *
+	 * @var array<int, true>
+	 */
+	private static $assigned_posts = [];
+
+	/**
 	 * Register hooks for cleanup when revisions are deleted.
 	 */
 	public static function register_hooks() {
@@ -129,10 +138,11 @@ class NRE_Migration_Context {
 	 * Stop the migration context. Clears the name/timestamp and removes the hook.
 	 */
 	public static function stop() {
-		self::$name          = null;
-		self::$timestamp     = null;
-		self::$term_id       = null;
-		self::$raw_revisions = false;
+		self::$name           = null;
+		self::$timestamp      = null;
+		self::$term_id        = null;
+		self::$raw_revisions  = false;
+		self::$assigned_posts = [];
 
 		remove_action( '_wp_put_post_revision', [ __CLASS__, 'save_migration_meta' ], 5 );
 	}
@@ -312,14 +322,18 @@ class NRE_Migration_Context {
 
 		$revision_id = self::raw_insert_revision( $post );
 		if ( $revision_id ) {
+			self::suspend_core_meta_hook();
+
 			/**
 			 * Fires after a revision is inserted via the raw/fast path.
 			 *
-			 * NRE hooks (taxonomy snapshot, post type snapshot) and WordPress
-			 * core's wp_save_revisioned_meta_fields() listen on this action.
+			 * NRE hooks (taxonomy snapshot, post type snapshot) listen on
+			 * this action.
 			 */
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally firing WP core hook.
 			do_action( '_wp_put_post_revision', $revision_id, (int) $post->ID );
+
+			self::restore_core_meta_hook();
 		}
 
 		add_action( '_wp_put_post_revision', [ __CLASS__, 'save_migration_meta' ], 5, 2 );
@@ -357,16 +371,40 @@ class NRE_Migration_Context {
 
 		$revision_id = self::raw_insert_revision( $post );
 		if ( $revision_id ) {
+			self::suspend_core_meta_hook();
+
 			/**
 			 * Fires after a revision is inserted via the raw/fast path.
 			 *
 			 * NRE hooks (migration meta, taxonomy snapshot, post type snapshot)
-			 * and WordPress core's wp_save_revisioned_meta_fields() listen on
-			 * this action. save_migration_meta() tags the revision here.
+			 * listen on this action. save_migration_meta() tags the revision here.
 			 */
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally firing WP core hook.
 			do_action( '_wp_put_post_revision', $revision_id, (int) $post->ID );
+
+			self::restore_core_meta_hook();
 		}
+	}
+
+	/**
+	 * Temporarily unhook core's wp_save_revisioned_meta_fields().
+	 *
+	 * The raw insert already captured all post fields, and the caller is
+	 * modifying post_content via raw SQL, not meta. Removing the core
+	 * handler avoids per-field update_metadata() calls that dominate the
+	 * hook cost in bulk operations.
+	 */
+	private static function suspend_core_meta_hook() {
+		remove_action( '_wp_put_post_revision', 'wp_save_revisioned_meta_fields' );
+	}
+
+	/**
+	 * Restore core's wp_save_revisioned_meta_fields() after a raw do_action.
+	 *
+	 * WordPress core registers this at priority 10 with 2 accepted args.
+	 */
+	private static function restore_core_meta_hook() {
+		add_action( '_wp_put_post_revision', 'wp_save_revisioned_meta_fields', 10, 2 );
 	}
 
 	/**
@@ -454,9 +492,17 @@ class NRE_Migration_Context {
 		}
 
 		if ( $post_id && taxonomy_exists( self::TAXONOMY ) ) {
+			// Skip if we already assigned the term to this post during this
+			// migration context. wp_set_object_terms() with append=true is
+			// idempotent but still does a SELECT + conditional INSERT per call.
+			if ( isset( self::$assigned_posts[ $post_id ] ) ) {
+				return;
+			}
+
 			$term_id = self::get_or_create_term();
 			if ( $term_id ) {
 				wp_set_object_terms( $post_id, [ $term_id ], self::TAXONOMY, true );
+				self::$assigned_posts[ $post_id ] = true;
 			}
 		}
 	}
