@@ -112,15 +112,27 @@ class NRE_Revision_UI {
 	 * @return array Modified diff rows.
 	 */
 	public function add_post_type_diff_row( $return, $compare_from, $compare_to ) {
-		$from_type = '';
-		$to_type   = get_post_meta( $compare_to->ID, NRE_Post_Type_Revisions::META_KEY, true );
+		$to_type = get_post_meta( $compare_to->ID, NRE_Post_Type_Revisions::META_KEY, true );
 
+		$from_type = null;
 		if ( $compare_from ) {
-			$from_type = get_post_meta( $compare_from->ID, NRE_Post_Type_Revisions::META_KEY, true );
+			$stored = get_post_meta( $compare_from->ID, NRE_Post_Type_Revisions::META_KEY, true );
+			// Distinguish "no snapshot" (pre-NRE, returns '') from "has snapshot".
+			$from_type = '' !== $stored ? $stored : null;
 		}
 
-		// Skip if both are identical or if snapshots don't exist yet.
-		if ( $from_type === $to_type || ( '' === $from_type && '' === $to_type ) ) {
+		// Normalize "to" side the same way.
+		if ( '' === $to_type ) {
+			$to_type = null;
+		}
+
+		// Skip if either side has no snapshot data (pre-NRE revision).
+		if ( null === $from_type || null === $to_type ) {
+			return $return;
+		}
+
+		// Skip if both are identical.
+		if ( $from_type === $to_type ) {
 			return $return;
 		}
 
