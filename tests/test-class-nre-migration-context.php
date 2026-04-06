@@ -453,6 +453,60 @@ class Test_NRE_Migration_Context extends WP_UnitTestCase {
 		$this->assertEmpty( wp_get_post_revisions( $post_id ) );
 	}
 
+	public function test_after_update_revision_uses_current_time() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		// Create a post published far in the past.
+		$old_date     = '2020-01-15 10:00:00';
+		$old_date_gmt = '2020-01-15 15:00:00';
+		$post_id      = $this->factory->post->create(
+			[
+				'post_content'  => 'Old content',
+				'post_date'     => $old_date,
+				'post_date_gmt' => $old_date_gmt,
+			]
+		);
+
+		// Create an existing revision dated in the past.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Revision from 2020',
+			]
+		);
+
+		NRE_Migration_Context::start( 'Date Fix Test' );
+
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Migrated in 2026' ],
+			[ 'ID' => $post_id ]
+		);
+
+		$before = current_time( 'mysql' );
+		NRE_Migration_Context::after_update( $post_id );
+		$after = current_time( 'mysql' );
+
+		NRE_Migration_Context::stop();
+
+		// The migration revision should be the newest by date.
+		$revisions = wp_get_post_revisions( $post_id, [ 'order' => 'DESC' ] );
+		$latest    = reset( $revisions );
+
+		$name = get_metadata( 'post', $latest->ID, '_nre_migration_name', true );
+		$this->assertSame( 'Date Fix Test', $name );
+
+		// The revision's date should be around "now", not 2020.
+		$this->assertGreaterThanOrEqual( $before, $latest->post_date );
+		$this->assertLessThanOrEqual( $after, $latest->post_date );
+
+		// Verify the parent post's date was NOT changed.
+		$parent = get_post( $post_id );
+		$this->assertSame( $old_date, $parent->post_date );
+	}
+
 	public function test_start_stop_lifecycle() {
 		$this->assertNull( NRE_Migration_Context::get_context() );
 

@@ -216,6 +216,12 @@ class NRE_Migration_Context {
 	 * Clears the post cache so the revision captures the updated state.
 	 * The revision is automatically tagged by save_migration_meta.
 	 *
+	 * After the revision is created, its dates are set to the current time
+	 * so it appears as the newest revision in the UI. WordPress core's
+	 * wp_save_post_revision() copies the parent post's dates, which would
+	 * place the migration revision at the wrong chronological position
+	 * when the parent was published long ago.
+	 *
 	 * @param int $post_id The post that was just modified.
 	 */
 	public static function after_update( $post_id ) {
@@ -229,7 +235,25 @@ class NRE_Migration_Context {
 		}
 
 		clean_post_cache( $post_id );
-		wp_save_post_revision( $post_id );
+		$revision_id = wp_save_post_revision( $post_id );
+
+		if ( $revision_id && ! is_wp_error( $revision_id ) ) {
+			global $wpdb;
+			$now     = current_time( 'mysql' );
+			$now_gmt = current_time( 'mysql', true );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->update(
+				$wpdb->posts,
+				[
+					'post_date'         => $now,
+					'post_date_gmt'     => $now_gmt,
+					'post_modified'     => $now,
+					'post_modified_gmt' => $now_gmt,
+				],
+				[ 'ID' => $revision_id ]
+			);
+			clean_post_cache( $revision_id );
+		}
 	}
 
 	/**
