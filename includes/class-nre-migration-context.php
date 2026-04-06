@@ -215,7 +215,8 @@ class NRE_Migration_Context {
 	 * Create an untagged baseline revision before the migration modifies a post.
 	 *
 	 * Suppresses migration tagging so the baseline isn't marked as a migration
-	 * revision. Only creates a revision if the post has none yet.
+	 * revision. Creates a baseline if the post has no revisions, or if the
+	 * latest revision doesn't match the current post state (stale revision).
 	 *
 	 * When raw_revisions is enabled, uses direct $wpdb queries instead of
 	 * wp_save_post_revision() for significantly better bulk performance.
@@ -239,7 +240,12 @@ class NRE_Migration_Context {
 
 		$revisions = wp_get_post_revisions( $post_id, [ 'posts_per_page' => 1 ] );
 		if ( ! empty( $revisions ) ) {
-			return;
+			// Check whether the latest revision matches the current post state.
+			$latest = reset( $revisions );
+			if ( self::revision_matches_post( $latest, $post ) ) {
+				return;
+			}
+			// Latest revision is stale — fall through to create a baseline.
 		}
 
 		// Suppress tagging so the baseline revision is clean.
@@ -279,12 +285,30 @@ class NRE_Migration_Context {
 	}
 
 	/**
+	 * Check whether a revision's tracked fields match the current post state.
+	 *
+	 * Compares post_content, post_title, and post_excerpt — the core fields
+	 * that NRE tracks in revisions.
+	 *
+	 * @param WP_Post $revision The revision to compare.
+	 * @param WP_Post $post     The current post.
+	 * @return bool True if all tracked fields match.
+	 */
+	private static function revision_matches_post( $revision, $post ) {
+		return $revision->post_content === $post->post_content
+			&& $revision->post_title === $post->post_title
+			&& $revision->post_excerpt === $post->post_excerpt;
+	}
+
+	/**
 	 * Raw/fast implementation of before_update().
 	 *
-	 * Uses direct $wpdb queries to read the post and check for existing
-	 * revisions, then inserts the baseline revision with $wpdb->insert()
-	 * instead of wp_insert_post(). Fires `_wp_put_post_revision` so that
-	 * NRE snapshot hooks (meta, taxonomy, post type) still run.
+	 * Uses direct $wpdb queries to read the post and check whether the latest
+	 * revision matches the current post state. Creates a baseline if no
+	 * revisions exist or if the latest revision is stale. Inserts the baseline
+	 * with $wpdb->insert() instead of wp_insert_post(). Fires
+	 * `_wp_put_post_revision` so that NRE snapshot hooks (meta, taxonomy,
+	 * post type) still run.
 	 *
 	 * @param int $post_id The post about to be modified.
 	 */
@@ -304,16 +328,20 @@ class NRE_Migration_Context {
 			return;
 		}
 
-		// Check if post already has revisions — fast existence check.
+		// Fetch the latest revision to check whether it matches the current post.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$has_revisions = (bool) $wpdb->get_var(
+		$latest_revision = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT 1 FROM {$wpdb->posts} WHERE post_parent = %d AND post_type = 'revision' LIMIT 1",
+				"SELECT post_content, post_title, post_excerpt FROM {$wpdb->posts} WHERE post_parent = %d AND post_type = 'revision' ORDER BY ID DESC LIMIT 1",
 				$post_id
 			)
 		);
 
-		if ( $has_revisions ) {
+		if ( $latest_revision
+			&& $latest_revision->post_content === $post->post_content
+			&& $latest_revision->post_title === $post->post_title
+			&& $latest_revision->post_excerpt === $post->post_excerpt
+		) {
 			return;
 		}
 

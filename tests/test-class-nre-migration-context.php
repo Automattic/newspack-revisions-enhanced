@@ -363,6 +363,93 @@ class Test_NRE_Migration_Context extends WP_UnitTestCase {
 		NRE_Migration_Context::stop();
 	}
 
+	public function test_before_update_creates_baseline_when_latest_revision_stale() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Version 1' ] );
+
+		// Create a revision via normal update.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Version 2',
+			]
+		);
+
+		// Modify the post directly without creating a revision (simulates
+		// REST API, WP-CLI, or direct DB update that skips revision creation).
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Version 3' ],
+			[ 'ID' => $post_id ]
+		);
+		clean_post_cache( $post_id );
+
+		$count_before = count( wp_get_post_revisions( $post_id ) );
+
+		NRE_Migration_Context::start( 'Stale Revision Test' );
+		NRE_Migration_Context::before_update( $post_id );
+
+		$count_after = count( wp_get_post_revisions( $post_id ) );
+
+		// A baseline should have been created because the latest revision
+		// ("Version 2") doesn't match the current post ("Version 3").
+		$this->assertSame( $count_before + 1, $count_after );
+
+		// The new baseline should capture the current post state.
+		$revisions = wp_get_post_revisions( $post_id, [ 'order' => 'DESC' ] );
+		$baseline  = reset( $revisions );
+		$this->assertSame( 'Version 3', $baseline->post_content );
+
+		// The baseline should NOT be tagged as a migration revision.
+		$name = get_metadata( 'post', $baseline->ID, '_nre_migration_name', true );
+		$this->assertEmpty( $name );
+
+		NRE_Migration_Context::stop();
+	}
+
+	public function test_before_update_creates_baseline_when_title_stale() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create(
+			[
+				'post_content' => 'Same content',
+				'post_title'   => 'Original Title',
+			]
+		);
+
+		// Create a revision.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Same content updated',
+				'post_title'   => 'Title V2',
+			]
+		);
+
+		// Change only the title directly (no revision created).
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_title' => 'Title V3' ],
+			[ 'ID' => $post_id ]
+		);
+		clean_post_cache( $post_id );
+
+		$count_before = count( wp_get_post_revisions( $post_id ) );
+
+		NRE_Migration_Context::start( 'Stale Title Test' );
+		NRE_Migration_Context::before_update( $post_id );
+
+		$count_after = count( wp_get_post_revisions( $post_id ) );
+		$this->assertSame( $count_before + 1, $count_after );
+
+		NRE_Migration_Context::stop();
+	}
+
 	public function test_after_update_creates_tagged_revision() {
 		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
 		wp_set_current_user( $user_id );
@@ -523,6 +610,96 @@ class Test_NRE_Migration_Context extends WP_UnitTestCase {
 
 		$count_after = count( wp_get_post_revisions( $post_id ) );
 		$this->assertSame( $count_before, $count_after );
+
+		NRE_Migration_Context::stop();
+	}
+
+	public function test_raw_before_update_creates_baseline_when_latest_revision_stale() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create( [ 'post_content' => 'Version 1' ] );
+
+		// Create a revision via normal update.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Version 2',
+			]
+		);
+
+		// Modify the post directly without creating a revision.
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_content' => 'Version 3' ],
+			[ 'ID' => $post_id ]
+		);
+		clean_post_cache( $post_id );
+
+		$count_before = count( wp_get_post_revisions( $post_id ) );
+
+		NRE_Migration_Context::start( 'Raw Stale Test', [ 'raw_revisions' => true ] );
+		NRE_Migration_Context::before_update( $post_id );
+
+		clean_post_cache( $post_id );
+
+		$count_after = count( wp_get_post_revisions( $post_id ) );
+
+		// A baseline should have been created because the latest revision
+		// ("Version 2") doesn't match the current post ("Version 3").
+		$this->assertSame( $count_before + 1, $count_after );
+
+		// The new baseline should capture the current post state.
+		$revisions = wp_get_post_revisions( $post_id, [ 'order' => 'DESC' ] );
+		$baseline  = reset( $revisions );
+		$this->assertSame( 'Version 3', $baseline->post_content );
+
+		// The baseline should NOT be tagged as a migration revision.
+		$name = get_metadata( 'post', $baseline->ID, '_nre_migration_name', true );
+		$this->assertEmpty( $name );
+
+		NRE_Migration_Context::stop();
+	}
+
+	public function test_raw_before_update_creates_baseline_when_excerpt_stale() {
+		$user_id = $this->factory->user->create( [ 'role' => 'editor' ] );
+		wp_set_current_user( $user_id );
+
+		$post_id = $this->factory->post->create(
+			[
+				'post_content' => 'Same content',
+				'post_excerpt' => 'Original excerpt',
+			]
+		);
+
+		// Create a revision.
+		wp_update_post(
+			[
+				'ID'           => $post_id,
+				'post_content' => 'Same content v2',
+				'post_excerpt' => 'Excerpt V2',
+			]
+		);
+
+		// Change only the excerpt directly (no revision created).
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			[ 'post_excerpt' => 'Excerpt V3' ],
+			[ 'ID' => $post_id ]
+		);
+		clean_post_cache( $post_id );
+
+		$count_before = count( wp_get_post_revisions( $post_id ) );
+
+		NRE_Migration_Context::start( 'Raw Excerpt Test', [ 'raw_revisions' => true ] );
+		NRE_Migration_Context::before_update( $post_id );
+
+		clean_post_cache( $post_id );
+
+		$count_after = count( wp_get_post_revisions( $post_id ) );
+		$this->assertSame( $count_before + 1, $count_after );
 
 		NRE_Migration_Context::stop();
 	}
