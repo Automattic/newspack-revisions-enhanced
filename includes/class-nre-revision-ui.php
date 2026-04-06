@@ -356,11 +356,16 @@ class NRE_Revision_UI {
 		$taxonomies = $this->taxonomy_revisions->get_tracked_taxonomies( $post_type );
 
 		foreach ( $taxonomies as $taxonomy ) {
-			$from_ids = [];
+			$from_ids = null;
 			$to_ids   = $this->get_taxonomy_term_ids( $compare_to, $taxonomy );
 
 			if ( $compare_from ) {
 				$from_ids = $this->get_taxonomy_term_ids( $compare_from, $taxonomy );
+			}
+
+			// Skip if either side has no snapshot data (pre-NRE revision).
+			if ( null === $from_ids || null === $to_ids ) {
+				continue;
 			}
 
 			if ( $from_ids === $to_ids ) {
@@ -559,7 +564,7 @@ class NRE_Revision_UI {
 	 *
 	 * @param WP_Post $post     The post or revision object.
 	 * @param string  $taxonomy The taxonomy name.
-	 * @return int[] Term IDs.
+	 * @return int[]|null Term IDs, or null if no snapshot exists (pre-NRE revision).
 	 */
 	public function get_taxonomy_term_ids( $post, $taxonomy ) {
 		// If this is a revision, read stored snapshot.
@@ -570,7 +575,8 @@ class NRE_Revision_UI {
 				return array_map( 'intval', $stored );
 			}
 
-			return [];
+			// Meta doesn't exist — return null to indicate unknown (pre-NRE) vs [] for empty.
+			return null;
 		}
 
 		// Parent post: read live taxonomy data.

@@ -372,4 +372,78 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 		$ids  = $this->revision_ui->get_taxonomy_term_ids( $post, 'category' );
 		$this->assertContains( $term, $ids );
 	}
+
+	public function test_get_taxonomy_term_ids_returns_null_for_pre_nre_revision() {
+		$data     = $this->create_post_with_revisions();
+		$revision = $data['revisions'][0];
+
+		// No taxonomy meta set on this revision (simulating pre-NRE revision).
+		$ids = $this->revision_ui->get_taxonomy_term_ids( $revision, 'category' );
+		$this->assertNull( $ids );
+	}
+
+	public function test_taxonomy_diff_skips_when_from_has_no_snapshot() {
+		$data     = $this->create_post_with_revisions();
+		$rev_from = $data['revisions'][0];
+		$rev_to   = $data['revisions'][1];
+
+		$term = $this->factory->term->create( [ 'taxonomy' => 'category' ] );
+
+		// Only set taxonomy meta on the "to" revision (simulating pre-NRE "from").
+		update_metadata( 'post', $rev_to->ID, NRE_TAX_META_PREFIX . 'category', [ $term ] );
+
+		$result = $this->revision_ui->add_taxonomy_diff_rows( [], $rev_from, $rev_to );
+
+		$found = false;
+		foreach ( $result as $row ) {
+			if ( 'nre-tax-category' === $row['id'] ) {
+				$found = true;
+			}
+		}
+		$this->assertFalse( $found, 'Should skip taxonomy diff when "from" revision has no snapshot.' );
+	}
+
+	public function test_taxonomy_diff_skips_when_to_has_no_snapshot() {
+		$data     = $this->create_post_with_revisions();
+		$rev_from = $data['revisions'][0];
+		$rev_to   = $data['revisions'][1];
+
+		$term = $this->factory->term->create( [ 'taxonomy' => 'category' ] );
+
+		// Only set taxonomy meta on the "from" revision (simulating pre-NRE "to").
+		update_metadata( 'post', $rev_from->ID, NRE_TAX_META_PREFIX . 'category', [ $term ] );
+
+		$result = $this->revision_ui->add_taxonomy_diff_rows( [], $rev_from, $rev_to );
+
+		$found = false;
+		foreach ( $result as $row ) {
+			if ( 'nre-tax-category' === $row['id'] ) {
+				$found = true;
+			}
+		}
+		$this->assertFalse( $found, 'Should skip taxonomy diff when "to" revision has no snapshot.' );
+	}
+
+	public function test_taxonomy_diff_shows_when_both_have_snapshots() {
+		$data     = $this->create_post_with_revisions();
+		$rev_from = $data['revisions'][0];
+		$rev_to   = $data['revisions'][1];
+
+		$term1 = $this->factory->term->create( [ 'taxonomy' => 'category' ] );
+		$term2 = $this->factory->term->create( [ 'taxonomy' => 'category' ] );
+
+		// Both revisions have taxonomy meta — diff should appear.
+		update_metadata( 'post', $rev_from->ID, NRE_TAX_META_PREFIX . 'category', [ $term1 ] );
+		update_metadata( 'post', $rev_to->ID, NRE_TAX_META_PREFIX . 'category', [ $term1, $term2 ] );
+
+		$result = $this->revision_ui->add_taxonomy_diff_rows( [], $rev_from, $rev_to );
+
+		$found = false;
+		foreach ( $result as $row ) {
+			if ( 'nre-tax-category' === $row['id'] ) {
+				$found = true;
+			}
+		}
+		$this->assertTrue( $found, 'Should show taxonomy diff when both revisions have snapshots.' );
+	}
 }
