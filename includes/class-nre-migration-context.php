@@ -281,7 +281,29 @@ class NRE_Migration_Context {
 		}
 
 		clean_post_cache( $post_id );
-		wp_save_post_revision( $post_id );
+		$revision_id = wp_save_post_revision( $post_id );
+
+		// Fix revision dates to current time so it sorts as the newest in the UI.
+		// wp_save_post_revision() copies the parent's dates, which places the
+		// migration revision at the wrong chronological position when the parent
+		// was published long ago.
+		if ( $revision_id && ! is_wp_error( $revision_id ) ) {
+			global $wpdb;
+			$now     = current_time( 'mysql' );
+			$now_gmt = current_time( 'mysql', true );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->update(
+				$wpdb->posts,
+				[
+					'post_date'         => $now,
+					'post_date_gmt'     => $now_gmt,
+					'post_modified'     => $now,
+					'post_modified_gmt' => $now_gmt,
+				],
+				[ 'ID' => $revision_id ]
+			);
+			clean_post_cache( $revision_id );
+		}
 	}
 
 	/**
@@ -350,6 +372,22 @@ class NRE_Migration_Context {
 
 		$revision_id = self::raw_insert_revision( $post );
 		if ( $revision_id ) {
+			// Fix baseline date to current time so it sorts after existing
+			// revisions but before the after_update migration revision.
+			$now     = current_time( 'mysql' );
+			$now_gmt = current_time( 'mysql', true );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->update(
+				$wpdb->posts,
+				[
+					'post_date'         => $now,
+					'post_date_gmt'     => $now_gmt,
+					'post_modified'     => $now,
+					'post_modified_gmt' => $now_gmt,
+				],
+				[ 'ID' => $revision_id ]
+			);
+
 			self::suspend_core_meta_hook();
 
 			/**
@@ -399,6 +437,21 @@ class NRE_Migration_Context {
 
 		$revision_id = self::raw_insert_revision( $post );
 		if ( $revision_id ) {
+			// Fix revision dates to current time so it sorts as the newest in the UI.
+			$now     = current_time( 'mysql' );
+			$now_gmt = current_time( 'mysql', true );
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->update(
+				$wpdb->posts,
+				[
+					'post_date'         => $now,
+					'post_date_gmt'     => $now_gmt,
+					'post_modified'     => $now,
+					'post_modified_gmt' => $now_gmt,
+				],
+				[ 'ID' => $revision_id ]
+			);
+
 			self::suspend_core_meta_hook();
 
 			/**
