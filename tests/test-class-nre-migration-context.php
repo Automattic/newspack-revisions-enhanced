@@ -498,9 +498,15 @@ class Test_NRE_Migration_Context extends WP_UnitTestCase {
 		$name = get_metadata( 'post', $latest->ID, '_nre_migration_name', true );
 		$this->assertSame( 'Date Fix Test', $name );
 
-		// The revision's date should be around "now", not 2020.
+		// The revision's dates should be around "now", not 2020.
 		$this->assertGreaterThanOrEqual( $before, $latest->post_date );
 		$this->assertLessThanOrEqual( $after, $latest->post_date );
+		$this->assertGreaterThanOrEqual( $before, $latest->post_modified );
+		$this->assertLessThanOrEqual( $after, $latest->post_modified );
+
+		$before_gmt = current_time( 'mysql', true );
+		$this->assertGreaterThan( $old_date_gmt, $latest->post_date_gmt );
+		$this->assertGreaterThan( $old_date_gmt, $latest->post_modified_gmt );
 
 		// Verify the parent post's date was NOT changed.
 		$parent = get_post( $post_id );
