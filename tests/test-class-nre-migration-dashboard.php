@@ -203,6 +203,23 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 		$this->assertSame( [], $data['posts'] );
 	}
 
+	public function test_get_migration_detail_counts_only_editable_posts() {
+		$migration = $this->create_migration();
+		wp_set_current_user( $this->editor_id );
+
+		$request = new WP_REST_Request( 'GET', '/nre/v1/migrations/' . $migration['term_id'] );
+		$request->set_param( 'term_id', $migration['term_id'] );
+
+		$data = $this->dashboard->get_migration_detail( $request )->get_data();
+		$this->assertSame( 1, $data['stats']['total_posts'] );
+
+		$this->lock_post( $migration['post_id'] );
+
+		$data = $this->dashboard->get_migration_detail( $request )->get_data();
+		$this->assertSame( 0, $data['stats']['total_posts'] );
+		$this->assertSame( 0, $data['stats']['posts_updated'] );
+	}
+
 	public function test_rollback_all_records_acting_user() {
 		$migration = $this->create_migration();
 		wp_set_current_user( $this->editor_id );

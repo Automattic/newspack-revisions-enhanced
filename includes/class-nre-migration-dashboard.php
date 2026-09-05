@@ -453,7 +453,7 @@ class NRE_Migration_Dashboard {
 		$timestamp      = (int) get_term_meta( $term_id, '_nre_migration_ts', true );
 		$migration_name = $term->name;
 
-		$statuses        = $this->get_post_statuses( $term_id, $migration_name, $timestamp );
+		$statuses        = $this->editable_statuses( $this->get_post_statuses( $term_id, $migration_name, $timestamp ) );
 		$posts_created   = 0;
 		$posts_updated   = 0;
 		$total_revisions = 0;
