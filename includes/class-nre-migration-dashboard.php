@@ -74,7 +74,7 @@ class NRE_Migration_Dashboard {
 		add_management_page(
 			__( 'Migrations', 'newspack-revisions-enhanced' ),
 			__( 'Migrations', 'newspack-revisions-enhanced' ),
-			'edit_posts',
+			'edit_others_posts',
 			'nre-migrations',
 			[ $this, 'render_page' ]
 		);
@@ -339,10 +339,63 @@ class NRE_Migration_Dashboard {
 	/**
 	 * Permission check for REST routes.
 	 *
+	 * Every route acts on content the caller did not necessarily write, so the
+	 * floor is the site-wide edit_others_posts. A route that names a post_id
+	 * is additionally checked against that post, so a route added later
+	 * inherits the object check by carrying the parameter rather than by
+	 * remembering to wire one up.
+	 *
+	 * @param WP_REST_Request|null $request The request object.
 	 * @return bool
 	 */
-	public function check_permission() {
-		return current_user_can( 'edit_posts' );
+	public function check_permission( $request = null ) {
+		if ( ! current_user_can( 'edit_others_posts' ) ) {
+			return false;
+		}
+
+		if ( $request instanceof WP_REST_Request ) {
+			$post_id = (int) $request->get_param( 'post_id' );
+			if ( $post_id && ! current_user_can( 'edit_post', $post_id ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Reduce a list of post IDs to the ones a given user can edit.
+	 *
+	 * @param int[] $post_ids Post IDs to filter.
+	 * @param int   $user_id  User to check as; 0 (no user) can edit nothing.
+	 * @return int[] Re-indexed list of post IDs the user can edit.
+	 */
+	public function filter_editable_posts( $post_ids, $user_id ) {
+		$user_id = (int) $user_id;
+		if ( ! $user_id ) {
+			return [];
+		}
+
+		return array_values(
+			array_filter(
+				$post_ids,
+				function ( $pid ) use ( $user_id ) {
+					return user_can( $user_id, 'edit_post', $pid );
+				}
+			)
+		);
+	}
+
+	/**
+	 * Keep only the status entries for posts the current user can edit, so the
+	 * export reports the same set the dashboard lists.
+	 *
+	 * @param array $statuses post_id => status info, as get_post_statuses() returns.
+	 * @return array The same shape, reduced to editable posts.
+	 */
+	private function editable_statuses( $statuses ) {
+		$editable = $this->filter_editable_posts( array_keys( $statuses ), get_current_user_id() );
+		return array_intersect_key( $statuses, array_flip( $editable ) );
 	}
 
 	/**
@@ -455,6 +508,9 @@ class NRE_Migration_Dashboard {
 
 		$statuses = $this->get_post_statuses( $term_id, $migration_name, $timestamp );
 		$post_ids = array_keys( $statuses );
+
+		// Every row's controls are edit actions, so list only what the caller can edit.
+		$post_ids = $this->filter_editable_posts( $post_ids, get_current_user_id() );
 
 		// Filter by status.
 		if ( 'all' !== $status ) {
@@ -816,6 +872,7 @@ class NRE_Migration_Dashboard {
 			'migration_name' => $migration_name,
 			'migration_ts'   => $timestamp,
 			'secret'         => $secret,
+			'user_id'        => get_current_user_id(),
 		];
 
 		update_option( $option_key, $state, false );
@@ -923,12 +980,17 @@ class NRE_Migration_Dashboard {
 			exit;
 		}
 
-		$result = $this->rollback->rollback_batch( $batch_ids, $state['migration_name'], $state['migration_ts'] );
+		// This request carries no session, so check each post as the user who
+		// started the job. A job state with no recorded user restores nothing.
+		$user_id     = isset( $state['user_id'] ) ? (int) $state['user_id'] : 0;
+		$allowed_ids = $this->filter_editable_posts( $batch_ids, $user_id );
+
+		$result = $this->rollback->rollback_batch( $allowed_ids, $state['migration_name'], $state['migration_ts'] );
 
 		$state['offset']      += count( $batch_ids );
 		$state['processed']   += count( $batch_ids );
 		$state['rolled_back'] += $result['rolled_back'];
-		$state['skipped']     += $result['skipped'];
+		$state['skipped']     += $result['skipped'] + ( count( $batch_ids ) - count( $allowed_ids ) );
 
 		// Cap errors at last 50.
 		$state['errors'] = array_merge( $state['errors'], $result['errors'] );
@@ -1102,7 +1164,7 @@ class NRE_Migration_Dashboard {
 	 * Handle the admin-post export action. Outputs a self-contained HTML report.
 	 */
 	public function handle_export() {
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'edit_others_posts' ) ) {
 			wp_die( esc_html__( 'You do not have permission to export migrations.', 'newspack-revisions-enhanced' ), 403 );
 		}
 
@@ -1129,7 +1191,7 @@ class NRE_Migration_Dashboard {
 		$date_display = $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '';
 
 		// Use cached statuses for stats (fast, avoids N+1 revision walking).
-		$statuses        = $this->get_post_statuses( $term_id, $migration_name, $timestamp );
+		$statuses        = $this->editable_statuses( $this->get_post_statuses( $term_id, $migration_name, $timestamp ) );
 		$posts_created   = 0;
 		$posts_updated   = 0;
 		$total_revisions = 0;
@@ -1182,7 +1244,7 @@ class NRE_Migration_Dashboard {
 	 * @param int     $timestamp       The migration timestamp.
 	 */
 	private function export_csv( $term, $migration_name, $timestamp ) {
-		$statuses = $this->get_post_statuses( $term->term_id, $migration_name, $timestamp );
+		$statuses = $this->editable_statuses( $this->get_post_statuses( $term->term_id, $migration_name, $timestamp ) );
 		$post_ids = array_keys( $statuses );
 
 		$filename = sanitize_file_name( 'migration-' . $term->slug . '-posts.csv' );
