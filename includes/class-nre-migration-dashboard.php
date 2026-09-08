@@ -376,6 +376,12 @@ class NRE_Migration_Dashboard {
 			return [];
 		}
 
+		// user_can( 'edit_post' ) loads each post through map_meta_cap(); prime the
+		// cache in chunks so a migration-sized list costs a query per chunk, not per post.
+		foreach ( array_chunk( array_map( 'intval', $post_ids ), 500 ) as $chunk ) {
+			_prime_post_caches( $chunk, false, false );
+		}
+
 		return array_values(
 			array_filter(
 				$post_ids,
@@ -387,8 +393,10 @@ class NRE_Migration_Dashboard {
 	}
 
 	/**
-	 * Keep only the status entries for posts the current user can edit, so the
-	 * export reports the same set the dashboard lists.
+	 * Keep only the status entries for posts the current user can edit.
+	 *
+	 * Every surface that reports on a migration (detail stats, listing, HTML and
+	 * CSV exports) reports the set the caller can act on.
 	 *
 	 * @param array $statuses post_id => status info, as get_post_statuses() returns.
 	 * @return array The same shape, reduced to editable posts.
@@ -427,6 +435,8 @@ class NRE_Migration_Dashboard {
 				'slug'       => $term->slug,
 				'timestamp'  => $timestamp,
 				'date'       => $timestamp ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) : '',
+				// Raw term count, deliberately unfiltered: the detail route reports the
+				// editable subset, and the two differ for a caller who cannot edit every post.
 				'post_count' => (int) $term->count,
 			];
 		}
@@ -842,6 +852,8 @@ class NRE_Migration_Dashboard {
 			]
 		);
 
+		$post_ids = $this->filter_editable_posts( $post_ids, get_current_user_id() );
+
 		if ( empty( $post_ids ) ) {
 			return new WP_REST_Response(
 				[
@@ -980,22 +992,14 @@ class NRE_Migration_Dashboard {
 			exit;
 		}
 
-		// This request carries no session, so check each post as the user who
-		// started the job. A job state with no recorded user restores nothing.
-		$user_id     = isset( $state['user_id'] ) ? (int) $state['user_id'] : 0;
-		$allowed_ids = $this->filter_editable_posts( $batch_ids, $user_id );
+		$state = $this->process_rollback_batch( $state, $batch_ids );
 
-		$result = $this->rollback->rollback_batch( $allowed_ids, $state['migration_name'], $state['migration_ts'] );
-
-		$state['offset']      += count( $batch_ids );
-		$state['processed']   += count( $batch_ids );
-		$state['rolled_back'] += $result['rolled_back'];
-		$state['skipped']     += $result['skipped'] + ( count( $batch_ids ) - count( $allowed_ids ) );
-
-		// Cap errors at last 50.
-		$state['errors'] = array_merge( $state['errors'], $result['errors'] );
-		if ( count( $state['errors'] ) > 50 ) {
-			$state['errors'] = array_slice( $state['errors'], -50 );
+		if ( 'failed' === $state['status'] ) {
+			unset( $state['secret'] );
+			update_option( $option_key, $state, false );
+			NRE_Migration_Context::stop();
+			$this->invalidate_status_cache( $term_id );
+			exit;
 		}
 
 		// Check if done.
@@ -1013,6 +1017,54 @@ class NRE_Migration_Dashboard {
 		$this->fire_rollback_loopback( $term_id, $secret );
 
 		exit;
+	}
+
+	/**
+	 * Restore one batch as the user recorded in the job state, accounting for every post in it.
+	 *
+	 * The loopback carries no session, so each post is checked with user_can() against
+	 * the recorded user. A post that user cannot edit is reported in `errors` rather than
+	 * folded into `skipped`, so the dashboard's completion notice reflects it. A state with
+	 * no recorded user is marked `failed` instead of walking the queue restoring nothing.
+	 *
+	 * @param array $state     The job state.
+	 * @param int[] $batch_ids The post IDs in this batch.
+	 * @return array The updated job state.
+	 */
+	public function process_rollback_batch( $state, $batch_ids ) {
+		$user_id = isset( $state['user_id'] ) ? (int) $state['user_id'] : 0;
+
+		if ( ! $user_id ) {
+			$state['status']   = 'failed';
+			$state['errors'][] = [
+				'post_id' => 0,
+				'message' => __( 'This rollback has no recorded user. Start it again from the dashboard.', 'newspack-revisions-enhanced' ),
+			];
+			return $state;
+		}
+
+		$allowed_ids = $this->filter_editable_posts( $batch_ids, $user_id );
+		$result      = $this->rollback->rollback_batch( $allowed_ids, $state['migration_name'], $state['migration_ts'] );
+
+		foreach ( array_diff( $batch_ids, $allowed_ids ) as $denied_id ) {
+			$result['errors'][] = [
+				'post_id' => (int) $denied_id,
+				'message' => __( 'Not restored: the user who started the rollback cannot edit this post.', 'newspack-revisions-enhanced' ),
+			];
+		}
+
+		$state['offset']      += count( $batch_ids );
+		$state['processed']   += count( $batch_ids );
+		$state['rolled_back'] += $result['rolled_back'];
+		$state['skipped']     += $result['skipped'];
+
+		// Cap errors at last 50.
+		$state['errors'] = array_merge( $state['errors'], $result['errors'] );
+		if ( count( $state['errors'] ) > 50 ) {
+			$state['errors'] = array_slice( $state['errors'], -50 );
+		}
+
+		return $state;
 	}
 
 	/**

@@ -234,6 +234,90 @@ class Test_NRE_Migration_Dashboard extends WP_UnitTestCase {
 		delete_option( 'nre_rollback_' . $migration['term_id'] );
 	}
 
+	public function test_rollback_all_counts_only_editable_posts() {
+		$migration = $this->create_migration();
+		wp_set_current_user( $this->editor_id );
+		$this->lock_post( $migration['post_id'] );
+
+		$request = new WP_REST_Request( 'POST', '/nre/v1/migrations/' . $migration['term_id'] . '/rollback-all' );
+		$request->set_param( 'term_id', $migration['term_id'] );
+		$data = $this->dashboard->rollback_all( $request )->get_data();
+
+		$this->assertSame( 'complete', $data['status'] );
+		$this->assertSame( 0, $data['total'] );
+		$this->assertFalse( get_option( 'nre_rollback_' . $migration['term_id'] ) );
+	}
+
+	/**
+	 * Helper: a running job state for the migration, as rollback_all() would store it.
+	 */
+	private function job_state( $migration, $user_id = null ) {
+		$state = [
+			'status'         => 'running',
+			'total'          => 1,
+			'processed'      => 0,
+			'rolled_back'    => 0,
+			'skipped'        => 0,
+			'errors'         => [],
+			'started_at'     => time(),
+			'offset'         => 0,
+			'post_ids'       => [ $migration['post_id'] ],
+			'migration_name' => $migration['name'],
+			'migration_ts'   => $migration['timestamp'],
+			'secret'         => 'test-secret',
+		];
+		if ( null !== $user_id ) {
+			$state['user_id'] = $user_id;
+		}
+		return $state;
+	}
+
+	public function test_process_rollback_batch_restores_posts_the_recorded_user_can_edit() {
+		$migration = $this->create_migration();
+		$state     = $this->job_state( $migration, $this->editor_id );
+
+		$state = $this->dashboard->process_rollback_batch( $state, [ $migration['post_id'] ] );
+
+		$this->assertSame( 1, $state['rolled_back'] );
+		$this->assertSame( [], $state['errors'] );
+		$this->assertSame( 'Pre-migration state', get_post( $migration['post_id'] )->post_content );
+	}
+
+	public function test_process_rollback_batch_reports_posts_the_recorded_user_cannot_edit() {
+		$migration = $this->create_migration();
+		$author_id = $this->factory->user->create( [ 'role' => 'author' ] );
+		$state     = $this->job_state( $migration, $author_id );
+
+		$state = $this->dashboard->process_rollback_batch( $state, [ $migration['post_id'] ] );
+
+		$this->assertSame( 'running', $state['status'] );
+		$this->assertSame( 0, $state['rolled_back'] );
+		$this->assertSame( 0, $state['skipped'] );
+		$this->assertCount( 1, $state['errors'] );
+		$this->assertSame( $migration['post_id'], $state['errors'][0]['post_id'] );
+		$this->assertSame( 'Migrated content', get_post( $migration['post_id'] )->post_content );
+	}
+
+	public function test_process_rollback_batch_fails_without_a_recorded_user() {
+		$migration = $this->create_migration();
+		$state     = $this->job_state( $migration );
+
+		$state = $this->dashboard->process_rollback_batch( $state, [ $migration['post_id'] ] );
+
+		$this->assertSame( 'failed', $state['status'] );
+		$this->assertSame( 0, $state['rolled_back'] );
+		$this->assertCount( 1, $state['errors'] );
+		$this->assertSame( 'Migrated content', get_post( $migration['post_id'] )->post_content );
+	}
+
+	public function test_handle_export_requires_edit_others_posts() {
+		$author_id = $this->factory->user->create( [ 'role' => 'author' ] );
+		wp_set_current_user( $author_id );
+
+		$this->expectException( 'WPDieException' );
+		$this->dashboard->handle_export();
+	}
+
 	public function test_filter_editable_posts_keeps_only_posts_the_user_can_edit() {
 		$post_id   = $this->factory->post->create();
 		$other_id  = $this->factory->post->create();
