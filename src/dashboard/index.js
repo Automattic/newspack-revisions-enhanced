@@ -244,6 +244,15 @@ function App() {
 					errors: [],
 				} );
 				startPolling( selectedId );
+			} else {
+				// The server answers "complete" at once when it finds no posts
+				// to roll back, so there is no job to poll.
+				setNotice( {
+					type: 'info',
+					message: 'There were no posts to roll back.',
+				} );
+				refreshDetail();
+				fetchMigrations();
 			}
 		} catch ( err ) {
 			if ( err.data?.status === 409 ) {
@@ -255,7 +264,7 @@ function App() {
 				} );
 			}
 		}
-	}, [ selectedId, startPolling ] );
+	}, [ selectedId, startPolling, refreshDetail, fetchMigrations ] );
 
 	const handleCancelRollback = useCallback( async () => {
 		try {
