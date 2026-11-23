@@ -377,8 +377,11 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 		$data     = $this->create_post_with_revisions();
 		$revision = $data['revisions'][0];
 
-		// No taxonomy meta set on this revision (simulating pre-NRE revision).
-		$ids = $this->revision_ui->get_taxonomy_term_ids( $revision, 'category' );
+		// The plugin snapshots taxonomies as each revision is saved, so remove
+		// the snapshot to simulate a revision that predates the plugin.
+		delete_metadata( 'post', $revision->ID, NRE_TAX_META_PREFIX . 'category' );
+
+		$ids =$this->revision_ui->get_taxonomy_term_ids( $revision, 'category' );
 		$this->assertNull( $ids );
 	}
 
@@ -389,7 +392,9 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 
 		$term = $this->factory->term->create( [ 'taxonomy' => 'category' ] );
 
-		// Only set taxonomy meta on the "to" revision (simulating pre-NRE "from").
+		// Only the "to" revision keeps a snapshot (simulating pre-NRE "from"); saving
+		// a revision writes one, so the "from" snapshot has to be removed.
+		delete_metadata( 'post', $rev_from->ID, NRE_TAX_META_PREFIX . 'category' );
 		update_metadata( 'post', $rev_to->ID, NRE_TAX_META_PREFIX . 'category', [ $term ] );
 
 		$result = $this->revision_ui->add_taxonomy_diff_rows( [], $rev_from, $rev_to );
@@ -410,7 +415,9 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 
 		$term = $this->factory->term->create( [ 'taxonomy' => 'category' ] );
 
-		// Only set taxonomy meta on the "from" revision (simulating pre-NRE "to").
+		// Only the "from" revision keeps a snapshot (simulating pre-NRE "to"); saving
+		// a revision writes one, so the "to" snapshot has to be removed.
+		delete_metadata( 'post', $rev_to->ID, NRE_TAX_META_PREFIX . 'category' );
 		update_metadata( 'post', $rev_from->ID, NRE_TAX_META_PREFIX . 'category', [ $term ] );
 
 		$result = $this->revision_ui->add_taxonomy_diff_rows( [], $rev_from, $rev_to );
