@@ -381,7 +381,7 @@ class Test_NRE_Revision_UI extends WP_UnitTestCase {
 		// the snapshot to simulate a revision that predates the plugin.
 		delete_metadata( 'post', $revision->ID, NRE_TAX_META_PREFIX . 'category' );
 
-		$ids =$this->revision_ui->get_taxonomy_term_ids( $revision, 'category' );
+		$ids = $this->revision_ui->get_taxonomy_term_ids( $revision, 'category' );
 		$this->assertNull( $ids );
 	}
 
